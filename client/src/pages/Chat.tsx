@@ -31,7 +31,8 @@ interface ToolCall {
 export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
+  const [isProcessingTools, setIsProcessingTools] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { data: tools = [] } = useQuery({
@@ -59,20 +60,21 @@ export default function Chat() {
   };
 
   // Execute a single tool call and update its status
-  const executeToolCall = async (toolCall: ToolCall) => {
+  const executeToolCall = async (toolCall: ToolCall, messageIndex: number) => {
     try {
       // Update status to executing
-      setMessages(prev => prev.map(msg => {
-        if (msg.tool_calls) {
-          return {
-            ...msg,
-            tool_calls: msg.tool_calls.map(tool => 
-              tool.id === toolCall.id ? { ...tool, status: "executing" } : tool
-            )
-          };
-        }
-        return msg;
-      }));
+      setMessages(prev => prev.map((msg, idx) => 
+        idx === messageIndex && msg.tool_calls
+          ? {
+              ...msg,
+              tool_calls: msg.tool_calls.map(tc =>
+                tc.id === toolCall.id 
+                  ? { ...tc, status: "executing" } 
+                  : tc
+              )
+            }
+          : msg
+      ));
 
       const toolResponse = await fetch("/api/execute-tool", {
         method: "POST",
@@ -86,49 +88,53 @@ export default function Chat() {
 
       const toolResult = await toolResponse.json();
 
-      // Update status to completed
+      // Update status to completed and add tool result
       setMessages(prev => {
-        const newMessages = prev.map(msg => {
-          if (msg.tool_calls) {
-            return {
-              ...msg,
-              tool_calls: msg.tool_calls.map(tool => 
-                tool.id === toolCall.id ? { ...tool, status: "completed" } : tool
-              )
-            };
-          }
-          return msg;
-        });
+        const newMessages = prev.map((msg, idx) =>
+          idx === messageIndex && msg.tool_calls
+            ? {
+                ...msg,
+                tool_calls: msg.tool_calls.map(tc =>
+                  tc.id === toolCall.id 
+                    ? { ...tc, status: "completed" } 
+                    : tc
+                )
+              }
+            : msg
+        );
 
-        // Add tool result message
-        return [...newMessages, {
-          role: "tool",
-          content: toolResult.result,
-          tool_call_id: toolCall.id
-        }];
+        return [
+          ...newMessages,
+          {
+            role: "tool",
+            content: toolResult.result,
+            tool_call_id: toolCall.id
+          }
+        ];
       });
 
       return toolResult;
     } catch (error) {
       // Update status to failed
-      setMessages(prev => prev.map(msg => {
-        if (msg.tool_calls) {
-          return {
-            ...msg,
-            tool_calls: msg.tool_calls.map(tool => 
-              tool.id === toolCall.id ? { ...tool, status: "failed" } : tool
-            )
-          };
-        }
-        return msg;
-      }));
+      setMessages(prev => prev.map((msg, idx) =>
+        idx === messageIndex && msg.tool_calls
+          ? {
+              ...msg,
+              tool_calls: msg.tool_calls.map(tc =>
+                tc.id === toolCall.id 
+                  ? { ...tc, status: "failed" } 
+                  : tc
+              )
+            }
+          : msg
+      ));
       throw error;
     }
   };
 
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if (!input.trim() || isWaitingForResponse) return;
 
     const userMessage = input.trim();
     setInput("");
@@ -136,10 +142,10 @@ export default function Chat() {
     // Add user message immediately
     const newUserMessage: Message = { role: "user", content: userMessage };
     setMessages(prev => [...prev, newUserMessage]);
-    setIsLoading(true);
+    setIsWaitingForResponse(true);
 
     try {
-      // Get initial response
+      // Get initial response from OpenAI
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -158,7 +164,7 @@ export default function Chat() {
       // If there are tool calls, handle them immediately
       if (assistantMessage.tool_calls) {
         // Add assistant message with pending tool calls
-        const assistantMessageWithPending = {
+        const messageWithPendingTools = {
           ...assistantMessage,
           tool_calls: assistantMessage.tool_calls.map(call => ({
             ...call,
@@ -166,35 +172,35 @@ export default function Chat() {
           }))
         };
 
-        // Add the message immediately to show progress
-        setMessages(prev => [...prev, assistantMessageWithPending]);
+        setMessages(prev => [...prev, messageWithPendingTools]);
+        setIsWaitingForResponse(false);
+        setIsProcessingTools(true);
 
-        // Execute tools one by one
+        const messageIndex = messages.length + 1; // +1 for the user message we just added
         const toolResults = [];
-        for (const toolCall of assistantMessageWithPending.tool_calls) {
+
+        // Execute each tool call
+        for (const toolCall of messageWithPendingTools.tool_calls) {
           try {
-            const result = await executeToolCall(toolCall);
+            const result = await executeToolCall(toolCall, messageIndex);
             toolResults.push(result);
           } catch (error) {
             console.error("Tool execution error:", error);
           }
         }
 
+        setIsProcessingTools(false);
+        setIsWaitingForResponse(true);
+
         // Get final response with tool results
         const finalResponse = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
+          body: JSON.stringify({
             messages: [
-              ...messages, 
+              ...messages,
               newUserMessage,
-              {
-                ...assistantMessage,
-                tool_calls: assistantMessage.tool_calls.map((call, index) => ({
-                  ...call,
-                  status: toolResults[index] ? "completed" : "failed"
-                }))
-              },
+              messageWithPendingTools,
               ...toolResults.map(result => ({
                 role: "tool",
                 content: result.result
@@ -208,8 +214,8 @@ export default function Chat() {
         }
 
         const finalData = await finalResponse.json();
-        // Add only the final assistant response
-        setMessages(prev => [...prev, finalData.messages[finalData.messages.length - 1]]);
+        const finalMessage = finalData.messages[finalData.messages.length - 1];
+        setMessages(prev => [...prev, finalMessage]);
       } else {
         // No tool calls, just add the assistant message
         setMessages(prev => [...prev, assistantMessage]);
@@ -221,7 +227,8 @@ export default function Chat() {
         content: `Error: ${error.message || 'An unexpected error occurred'}` 
       }]);
     } finally {
-      setIsLoading(false);
+      setIsWaitingForResponse(false);
+      setIsProcessingTools(false);
     }
   }
 
@@ -343,8 +350,8 @@ export default function Chat() {
                 ))}
               </AnimatePresence>
 
-              {/* Loading State */}
-              {isLoading && (
+              {/* Loading and Processing States */}
+              {(isWaitingForResponse || isProcessingTools) && (
                 <motion.div 
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -354,7 +361,9 @@ export default function Chat() {
                   <div className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 max-w-[85%] rounded-2xl px-4 py-3 shadow-sm">
                     <div className="flex items-center space-x-2">
                       <Loader2 className="h-4 w-4 animate-spin text-[#8445ff]" />
-                      <span className="text-sm font-medium">Waiting for response...</span>
+                      <span className="text-sm font-medium">
+                        {isProcessingTools ? "Executing tools..." : "Waiting for response..."}
+                      </span>
                     </div>
                   </div>
                 </motion.div>
@@ -369,12 +378,12 @@ export default function Chat() {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   placeholder="Type your message..."
-                  disabled={isLoading}
+                  disabled={isWaitingForResponse || isProcessingTools}
                   className="flex-1 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-[#8445ff] focus:border-transparent transition-shadow"
                 />
                 <Button 
                   type="submit" 
-                  disabled={isLoading}
+                  disabled={isWaitingForResponse || isProcessingTools}
                   className="bg-[#8445ff] hover:bg-[#6a37cc] rounded-xl px-4 h-[42px] transition-all duration-200 hover:shadow-lg disabled:opacity-50"
                 >
                   <Send className="h-5 w-5" />
