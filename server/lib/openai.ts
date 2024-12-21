@@ -24,8 +24,7 @@ export async function sendChatMessage(messages: any[], tools: Tool[]): Promise<O
           required: tool.inputSchema.required || [],
           additionalProperties: false
         }
-      },
-      strict: true
+      }
     }));
 
     // Make OpenAI API call
@@ -34,23 +33,37 @@ export async function sendChatMessage(messages: any[], tools: Tool[]): Promise<O
       model: "gpt-4o",
       messages,
       tools: openAITools,
+      tool_choice: "auto",
       stream: false
     });
 
     const reply = response.choices[0].message;
 
-    // If there are tool calls, include them in the response
+    // If there are tool calls, format them for the frontend
     if (reply.tool_calls) {
+      const formattedContent = [
+        { type: "text", text: reply.content || "" }
+      ];
+
+      // Add tool call information
+      reply.tool_calls.forEach((toolCall: any) => {
+        formattedContent.push({
+          type: "tool_call",
+          tool: toolCall.function.name,
+          input: JSON.parse(toolCall.function.arguments)
+        });
+      });
+
       return {
         messages: [...messages, {
           role: "assistant",
-          content: reply.content,
+          content: formattedContent,
           tool_calls: reply.tool_calls
         }]
       };
     }
 
-    // Otherwise just return regular message
+    // For regular messages, just return the content
     return {
       messages: [...messages, {
         role: "assistant",
