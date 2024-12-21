@@ -62,12 +62,7 @@ export default function Chat() {
       }
 
       const data = await response.json();
-
-      if (data.messages) {
-        setMessages(data.messages);
-      } else {
-        setMessages(prev => [...prev, { role: "assistant", content: data.response }]);
-      }
+      setMessages(data.messages);
     } catch (error: any) {
       console.error("Chat error:", error);
       setMessages(prev => [...prev, { 
@@ -136,6 +131,24 @@ export default function Chat() {
     return blocks;
   }
 
+  // Helper to determine if a message should be displayed
+  function shouldDisplayMessage(message: Message, index: number): boolean {
+    // Always show user messages
+    if (message.role === "user") return true;
+
+    // For assistant messages, check if the next message is a tool result
+    const nextMessage = messages[index + 1];
+    if (!nextMessage) return true;
+
+    // Don't show tool result messages independently
+    if (Array.isArray(nextMessage.content) && 
+        nextMessage.content[0]?.type === 'tool_result') {
+      return false;
+    }
+
+    return true;
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white dark:from-gray-950 dark:to-gray-900">
       <div className="max-w-4xl mx-auto pt-8 pb-24 px-4">
@@ -144,7 +157,7 @@ export default function Chat() {
             {/* Messages Container with backdrop blur */}
             <div className="flex-1 overflow-y-auto space-y-4 scroll-smooth px-2 messages-container rounded-2xl">
               <AnimatePresence initial={false}>
-                {messages.map((message, i) => (
+                {messages.map((message, i) => shouldDisplayMessage(message, i) && (
                   <motion.div
                     key={i}
                     initial={{ opacity: 0, y: 20 }}
