@@ -64,15 +64,18 @@ export default function ToolConfig() {
     },
   });
 
-  const { fields: pathFields, append: appendPath, remove: removePath } = form.useFieldArray({
+  const pathParams = useFieldArray({
+    control: form.control,
     name: "config.pathParameters",
   });
 
-  const { fields: queryFields, append: appendQuery, remove: removeQuery } = form.useFieldArray({
+  const queryParams = useFieldArray({
+    control: form.control,
     name: "config.queryParameters",
   });
 
-  const { fields: bodyFields, append: appendBody, remove: removeBody } = form.useFieldArray({
+  const bodyParams = useFieldArray({
+    control: form.control,
     name: "config.bodyParameters",
   });
 
@@ -329,9 +332,9 @@ export default function ToolConfig() {
 
                     {/* Parameters */}
                     {[
-                      { title: "Path Parameters", fields: pathFields, append: appendPath, remove: removePath },
-                      { title: "Query Parameters", fields: queryFields, append: appendQuery, remove: removeQuery },
-                      { title: "Body Parameters", fields: bodyFields, append: appendBody, remove: removeBody },
+                      { title: "Path Parameters", fields: pathParams.fields, append: pathParams.append, remove: pathParams.remove },
+                      { title: "Query Parameters", fields: queryParams.fields, append: queryParams.append, remove: queryParams.remove },
+                      { title: "Body Parameters", fields: bodyParams.fields, append: bodyParams.append, remove: bodyParams.remove }
                     ].map((section) => (
                       <div key={section.title} className="space-y-2">
                         <div className="flex justify-between items-center">
@@ -349,28 +352,49 @@ export default function ToolConfig() {
                         <div className="space-y-2">
                           {section.fields.map((field, index) => (
                             <div key={field.id} className="flex gap-2">
-                              <Input
-                                {...form.register(`${field.name}.name`)}
-                                placeholder="Parameter name"
+                              <FormField
+                                control={form.control}
+                                name={`config.${section.title.toLowerCase().split(" ")[0]}Parameters.${index}.name`}
+                                render={({ field }) => (
+                                  <FormControl>
+                                    <Input
+                                      {...field}
+                                      placeholder="Parameter name"
+                                    />
+                                  </FormControl>
+                                )}
                               />
-                              <Select
-                                onValueChange={(value) => form.setValue(`${field.name}.type`, value)}
-                                defaultValue="string"
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Type" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="string">String</SelectItem>
-                                  <SelectItem value="number">Number</SelectItem>
-                                  <SelectItem value="boolean">Boolean</SelectItem>
-                                  <SelectItem value="array">Array</SelectItem>
-                                  <SelectItem value="object">Object</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <Input
-                                {...form.register(`${field.name}.description`)}
-                                placeholder="Description"
+                              <FormField
+                                control={form.control}
+                                name={`config.${section.title.toLowerCase().split(" ")[0]}Parameters.${index}.type`}
+                                render={({ field }) => (
+                                  <FormControl>
+                                    <Select onValueChange={field.onChange} value={field.value}>
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Type" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="string">String</SelectItem>
+                                        <SelectItem value="number">Number</SelectItem>
+                                        <SelectItem value="boolean">Boolean</SelectItem>
+                                        <SelectItem value="array">Array</SelectItem>
+                                        <SelectItem value="object">Object</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </FormControl>
+                                )}
+                              />
+                              <FormField
+                                control={form.control}
+                                name={`config.${section.title.toLowerCase().split(" ")[0]}Parameters.${index}.description`}
+                                render={({ field }) => (
+                                  <FormControl>
+                                    <Input
+                                      {...field}
+                                      placeholder="Description"
+                                    />
+                                  </FormControl>
+                                )}
                               />
                               <Button
                                 type="button"
