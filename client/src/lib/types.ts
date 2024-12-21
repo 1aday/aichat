@@ -62,3 +62,16 @@ export interface ToolExecution {
   error?: string;
   createdAt: string;
 }
+
+export interface ToolResponse {
+  id: number;
+  name: string;
+  description: string;
+  type: ToolType;
+  config: any;
+  inputSchema: any;
+}
+
+export interface ToolExecutionResponse {
+  result: any;
+}

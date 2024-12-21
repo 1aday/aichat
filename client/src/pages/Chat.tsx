@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/collapsible";
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { listTools } from "@/lib/api";
-import { Send, Loader2, ChevronRight, Check, Terminal } from "lucide-react";
+import { Send, Loader2, ChevronRight, Check, Terminal, MessageSquare, Settings, ArrowDownToLine, XCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface Message {
@@ -20,13 +20,23 @@ interface Message {
   tool_call_id?: string;
 }
 
+type ToolExecutionStep = 
+  | "agent_requested" 
+  | "preparing_execution"
+  | "executing"
+  | "received_response"
+  | "completed"
+  | "failed";
+
 interface ToolCall {
   id: string;
   function: {
     name: string;
     arguments: string;
   };
-  status?: "pending" | "executing" | "completed" | "failed";
+  status?: ToolExecutionStep;
+  startTime?: number;
+  endTime?: number;
 }
 
 export default function Chat() {
@@ -50,23 +60,21 @@ export default function Chat() {
   }, [messages]);
 
   // Calculate progress based on tool status
-  const calculateProgress = (toolCall: ToolCall) => {
-    console.log('Calculating progress for tool:', toolCall.id, 'Status:', toolCall.status);
-    switch (toolCall.status) {
-      case "pending": return 33;
-      case "executing": return 66;
-      case "completed": return 100;
-      case "failed": return 100;
-      default: return 0;
-    }
-  };
+  function calculateProgress(step: ToolExecutionStep): number {
+    const steps: Record<ToolExecutionStep, number> = {
+      agent_requested: 20,
+      preparing_execution: 40,
+      executing: 60,
+      received_response: 80,
+      completed: 100,
+      failed: 100
+    };
+    return steps[step] || 0;
+  }
 
   // Execute a single tool call and update its status
   const executeToolCall = async (toolCall: ToolCall, messageIndex: number) => {
-    console.log('Executing tool call:', toolCall.id, 'Message index:', messageIndex);
-    try {
-      // Update status to executing
-      console.log('Setting tool status to executing');
+    const updateToolStatus = (status: ToolExecutionStep) => {
       setMessages(prev => {
         const updatedMessages = prev.map((msg, idx) =>
           idx === messageIndex && msg.tool_calls
@@ -74,16 +82,26 @@ export default function Chat() {
                 ...msg,
                 tool_calls: msg.tool_calls.map(tc =>
                   tc.id === toolCall.id
-                    ? { ...tc, status: "executing" }
+                    ? { 
+                        ...tc, 
+                        status,
+                        startTime: tc.startTime || Date.now(),
+                        ...(status === 'completed' || status === 'failed' ? { endTime: Date.now() } : {})
+                      }
                     : tc
                 )
               }
             : msg
         );
-        console.log('Messages after setting executing status:', updatedMessages);
         return updatedMessages;
       });
+    };
 
+    try {
+      updateToolStatus('preparing_execution');
+      await new Promise(r => setTimeout(r, 500));
+
+      updateToolStatus('executing');
       const toolResponse = await fetch("/api/execute-tool", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -94,53 +112,22 @@ export default function Chat() {
         throw new Error(await toolResponse.text());
       }
 
+      updateToolStatus('received_response');
+      await new Promise(r => setTimeout(r, 500));
+
       const toolResult = await toolResponse.json();
-      console.log('Tool execution completed:', toolResult);
+      updateToolStatus('completed');
 
-      // Update status to completed and add tool result
-      setMessages(prev => {
-        const updatedMessages = prev.map((msg, idx) =>
-          idx === messageIndex && msg.tool_calls
-            ? {
-                ...msg,
-                tool_calls: msg.tool_calls.map(tc =>
-                  tc.id === toolCall.id
-                    ? { ...tc, status: "completed" }
-                    : tc
-                )
-              }
-            : msg
-        );
-
-        console.log('Messages after completion:', [...updatedMessages, {
-          role: "tool",
-          content: toolResult.result,
-          tool_call_id: toolCall.id
-        }]);
-
-        return [...updatedMessages, {
-          role: "tool",
-          content: toolResult.result,
-          tool_call_id: toolCall.id
-        }];
-      });
+      // Add tool response message
+      setMessages(prev => [...prev, {
+        role: "tool",
+        content: JSON.stringify(toolResult.result),
+        tool_call_id: toolCall.id
+      }]);
 
       return toolResult;
     } catch (error) {
-      console.error('Tool execution failed:', error);
-      // Update status to failed
-      setMessages(prev => prev.map((msg, idx) =>
-        idx === messageIndex && msg.tool_calls
-          ? {
-              ...msg,
-              tool_calls: msg.tool_calls.map(tc =>
-                tc.id === toolCall.id
-                  ? { ...tc, status: "failed" }
-                  : tc
-              )
-            }
-          : msg
-      ));
+      updateToolStatus('failed');
       throw error;
     }
   };
@@ -154,12 +141,11 @@ export default function Chat() {
 
     // Add user message immediately
     const newUserMessage: Message = { role: "user", content: userMessage };
-    console.log('Adding user message:', newUserMessage);
     setMessages(prev => [...prev, newUserMessage]);
     setIsWaitingForResponse(true);
 
     try {
-      console.log('Sending message to API');
+      // Get initial assistant response
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -174,33 +160,28 @@ export default function Chat() {
 
       const data = await response.json();
       const assistantMessage = data.messages[data.messages.length - 1];
-      console.log('Received assistant message:', assistantMessage);
 
-      // If there are tool calls, handle them immediately
+      // If there are tool calls, handle them
       if (assistantMessage.tool_calls) {
-        console.log('Tool calls detected:', assistantMessage.tool_calls);
         // Add assistant message with pending tool calls
         const messageWithPendingTools = {
           ...assistantMessage,
           tool_calls: assistantMessage.tool_calls.map(call => ({
             ...call,
-            status: "pending"
+            status: "agent_requested" as ToolExecutionStep
           }))
         };
 
-        console.log('Adding message with pending tools:', messageWithPendingTools);
         setMessages(prev => [...prev, messageWithPendingTools]);
         setIsWaitingForResponse(false);
         setIsProcessingTools(true);
 
-        const messageIndex = messages.length + 1; // +1 for the user message we just added
-        console.log('Tool message index:', messageIndex);
+        const messageIndex = messages.length + 1;
         const toolResults = [];
 
-        // Execute each tool call
+        // Execute each tool call sequentially
         for (const toolCall of messageWithPendingTools.tool_calls) {
           try {
-            console.log('Starting tool execution:', toolCall.id);
             const result = await executeToolCall(toolCall, messageIndex);
             toolResults.push(result);
           } catch (error) {
@@ -208,12 +189,10 @@ export default function Chat() {
           }
         }
 
-        console.log('All tool executions completed');
         setIsProcessingTools(false);
         setIsWaitingForResponse(true);
 
         // Get final response with tool results
-        console.log('Getting final response with tool results');
         const finalResponse = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -224,7 +203,8 @@ export default function Chat() {
               messageWithPendingTools,
               ...toolResults.map(result => ({
                 role: "tool",
-                content: result.result
+                content: JSON.stringify(result.result),
+                tool_call_id: result.tool_call_id
               }))
             ]
           }),
@@ -236,11 +216,9 @@ export default function Chat() {
 
         const finalData = await finalResponse.json();
         const finalMessage = finalData.messages[finalData.messages.length - 1];
-        console.log('Final assistant message:', finalMessage);
         setMessages(prev => [...prev, finalMessage]);
       } else {
         // No tool calls, just add the assistant message
-        console.log('No tool calls, adding regular assistant message');
         setMessages(prev => [...prev, assistantMessage]);
       }
     } catch (error: any) {
@@ -256,70 +234,145 @@ export default function Chat() {
   }
 
   function renderToolProgress(toolCall: ToolCall) {
-    console.log('Rendering tool progress:', toolCall);
-    const progress = calculateProgress(toolCall);
-    let statusText = "Preparing to execute...";
-    let statusColor = "text-blue-500";
+    const stepInfo: Record<ToolExecutionStep, {
+      label: string;
+      icon: JSX.Element;
+      color: string;
+      accent: string;
+      background: string;
+    }> = {
+      agent_requested: {
+        label: "AI Agent Requested",
+        subtext: "Preparing to execute tool function",
+        icon: <MessageSquare className="h-3.5 w-3.5 text-[#007AFF]" />,
+        color: "text-[#007AFF]",
+        accent: "ring-[#007AFF]/20",
+        background: "bg-[#007AFF]/10"
+      },
+      preparing_execution: {
+        label: "Preparing Parameters",
+        subtext: "Validating and formatting input",
+        icon: <Settings className="h-3.5 w-3.5 text-[#5856D6]" />,
+        color: "text-[#5856D6]",
+        accent: "ring-[#5856D6]/20",
+        background: "bg-[#5856D6]/10"
+      },
+      executing: {
+        label: "Executing Function",
+        subtext: "Processing request",
+        icon: <Loader2 className="h-3.5 w-3.5 animate-spin text-[#FF9500]" />,
+        color: "text-[#FF9500]",
+        accent: "ring-[#FF9500]/20",
+        background: "bg-[#FF9500]/10"
+      },
+      received_response: {
+        label: "Processing Response",
+        subtext: "Analyzing results",
+        icon: <ArrowDownToLine className="h-3.5 w-3.5 text-[#FF3B30]" />,
+        color: "text-[#FF3B30]",
+        accent: "ring-[#FF3B30]/20",
+        background: "bg-[#FF3B30]/10"
+      },
+      completed: {
+        label: "Execution Complete",
+        subtext: "Tool function succeeded",
+        icon: <Check className="h-3.5 w-3.5 text-[#34C759]" />,
+        color: "text-[#34C759]",
+        accent: "ring-[#34C759]/20",
+        background: "bg-[#34C759]/10"
+      },
+      failed: {
+        label: "Execution Failed",
+        subtext: "An error occurred",
+        icon: <XCircle className="h-3.5 w-3.5 text-[#FF3B30]" />,
+        color: "text-[#FF3B30]",
+        accent: "ring-[#FF3B30]/20",
+        background: "bg-[#FF3B30]/10"
+      }
+    };
 
-    switch (toolCall.status) {
-      case "executing":
-        statusText = "Executing tool function...";
-        statusColor = "text-yellow-500";
-        break;
-      case "completed":
-        statusText = "Tool execution completed";
-        statusColor = "text-green-500";
-        break;
-      case "failed":
-        statusText = "Tool execution failed";
-        statusColor = "text-red-500";
-        break;
-    }
+    const currentStep = stepInfo[toolCall.status || 'agent_requested'];
+    const duration = toolCall.endTime && toolCall.startTime 
+      ? `${((toolCall.endTime - toolCall.startTime) / 1000).toFixed(2)}s`
+      : '';
 
     return (
-      <div className="relative mt-4 mb-2">
-        {/* Progress Line */}
-        <div className="absolute left-[11px] top-0 h-full w-0.5 bg-gray-200 dark:bg-gray-700" />
+      <div className="relative mt-6 mb-4">
+        {/* Elegant progress line with gradient fade */}
+        <div className="absolute left-[11px] top-2 bottom-2 w-[2px] bg-gradient-to-b from-gray-200/0 via-gray-200 to-gray-200/0 dark:from-gray-700/0 dark:via-gray-700 dark:to-gray-700/0" />
 
-        {/* Tool Execution Step */}
-        <div className="relative flex items-start gap-3">
-          <div className={`relative z-10 flex h-6 w-6 items-center justify-center rounded-full ${
-            toolCall.status === "completed" ? "bg-green-500" :
-              toolCall.status === "failed" ? "bg-red-500" :
-                "bg-primary"
-          } shadow-sm`}>
-            {toolCall.status === "completed" ? (
-              <Check className="h-3 w-3 text-white" />
-            ) : (
-              <Terminal className="h-3 w-3 text-white" />
-            )}
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-              Using Tool: {toolCall.function.name}
-            </p>
-            <p className={`mt-1 text-xs ${statusColor}`}>
-              {statusText}
-            </p>
-            <div className="mt-2 w-full max-w-md">
-              <Progress value={progress} className="h-1" />
-            </div>
-          </div>
+        {/* Execution Timeline */}
+        <div className="space-y-4">
+          {Object.entries(stepInfo).map(([step, info], index) => {
+            const isCurrentStep = step === toolCall.status;
+            const isPastStep = calculateProgress(toolCall.status || 'agent_requested') >= calculateProgress(step as ToolExecutionStep);
+            
+            return (
+              <div 
+                key={step} 
+                className={`relative flex items-start gap-4 transition-all duration-300 ease-out
+                  ${isPastStep ? 'opacity-100' : 'opacity-50'}
+                  ${isCurrentStep ? 'scale-[1.02]' : 'scale-100'}`}
+              >
+                {/* Status Icon */}
+                <div className={`
+                  relative z-10 flex h-6 w-6 items-center justify-center rounded-full
+                  transition-all duration-300 ease-out
+                  ${isPastStep ? info.background : 'bg-gray-100 dark:bg-gray-800'}
+                  ${isCurrentStep ? `ring-2 ${info.accent} ring-offset-2 dark:ring-offset-gray-950` : ''}
+                  shadow-sm
+                `}>
+                  {info.icon}
+                </div>
+
+                {/* Status Content */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline justify-between">
+                    <h4 className={`font-medium tracking-tight
+                      ${isPastStep ? info.color : 'text-gray-400 dark:text-gray-500'}
+                      ${isCurrentStep ? 'text-lg' : 'text-sm'}
+                    `}>
+                      {info.label}
+                    </h4>
+                    {isCurrentStep && duration && (
+                      <span className="text-xs font-medium text-gray-400 dark:text-gray-500">
+                        {duration}
+                      </span>
+                    )}
+                  </div>
+                  <p className={`mt-0.5 text-sm transition-all duration-300
+                    ${isPastStep ? 'text-gray-600 dark:text-gray-300' : 'text-gray-400 dark:text-gray-500'}
+                  `}>
+                    {info.subtext}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
         </div>
 
-        {/* Tool Details */}
-        <div className="ml-9 mt-4">
+        {/* Tool Details Panel */}
+        <div className="ml-10 mt-4">
           <Collapsible>
-            <CollapsibleTrigger className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
-              <ChevronRight className="h-3 w-3" />
-              View details
+            <CollapsibleTrigger className="group flex items-center gap-2 text-xs font-medium text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
+              <ChevronRight className="h-3 w-3 transition-transform duration-200 ease-out group-data-[state=open]:rotate-90" />
+              Function Details
             </CollapsibleTrigger>
-            <CollapsibleContent>
-              <div className="mt-2 rounded-md bg-gray-50 dark:bg-gray-800/50 p-3">
-                <p className="text-xs text-gray-500 mb-1">Function Arguments:</p>
-                <pre className="text-xs font-mono bg-white dark:bg-gray-800 rounded p-2 overflow-x-auto">
-                  {toolCall.function.arguments}
-                </pre>
+            <CollapsibleContent className="animate-slideDown">
+              <div className="mt-3 rounded-lg border border-gray-200/50 dark:border-gray-800/50 bg-gray-50/50 dark:bg-gray-900/50 backdrop-blur-sm">
+                <div className="border-b border-gray-200/50 dark:border-gray-800/50 px-4 py-2.5">
+                  <h5 className="text-xs font-medium text-gray-900 dark:text-gray-100">
+                    {toolCall.function.name}
+                  </h5>
+                </div>
+                <div className="px-4 py-3">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
+                    Arguments
+                  </p>
+                  <pre className="text-xs font-mono bg-white/50 dark:bg-gray-950/50 rounded-md p-3 overflow-x-auto border border-gray-200/50 dark:border-gray-800/50">
+                    {JSON.stringify(JSON.parse(toolCall.function.arguments), null, 2)}
+                  </pre>
+                </div>
               </div>
             </CollapsibleContent>
           </Collapsible>

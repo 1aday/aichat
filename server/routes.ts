@@ -6,6 +6,10 @@ import { executeBigQueryQuery } from "./lib/bigquery";
 import { sendChatMessage } from "./lib/openai";
 import { eq } from "drizzle-orm";
 import type { Tool, ToolType } from "../client/src/lib/types";
+import { Logger } from './lib/logger';
+import { loggingMiddleware } from './middleware/logging';
+
+const logger = new Logger({ prefix: '[Server] ' });
 
 async function executeToolWithOpenAI(toolDef: { name: string; description: string; type: ToolType; function: { name: string; description: string; parameters: any; }; }, input: any): Promise<any> {
   try {
@@ -26,6 +30,8 @@ async function executeToolWithOpenAI(toolDef: { name: string; description: strin
 }
 
 export function registerRoutes(app: Express): Server {
+  app.use(loggingMiddleware);
+  
   const httpServer = createServer(app);
 
   // Setup default tools endpoint
@@ -75,72 +81,33 @@ export function registerRoutes(app: Express): Server {
 
   // Chat endpoint
   app.post("/api/chat", async (req, res) => {
+    console.log('🔄 Chat Request:', {
+      body: req.body,
+      timestamp: new Date().toISOString()
+    });
+
     try {
       const availableTools = await db.select().from(tools);
-      let messages = req.body.messages || [];
+      
+      const messages = Array.isArray(req.body.messages) 
+        ? req.body.messages 
+        : [{ role: "user", content: req.body.message }];
 
-      if (!Array.isArray(messages)) {
-        messages = [{ role: "user", content: req.body.message }];
-      }
+      console.log('📝 Sending to OpenAI:', {
+        messages,
+        toolCount: availableTools.length
+      });
 
-      // Get initial response from OpenAI
       const response = await sendChatMessage(messages, availableTools as Tool[]);
-      const lastMessage = response.messages[response.messages.length - 1];
+      
+      console.log('📨 OpenAI Response:', {
+        lastMessage: response.messages[response.messages.length - 1]
+      });
 
-      // Handle tool calls
-      if (lastMessage.tool_calls) {
-        const toolCalls = lastMessage.tool_calls;
-        const tool = availableTools.find(t => t.name === toolCalls[0].function.name);
-
-        if (tool) {
-          try {
-            const result = await executeToolWithOpenAI(
-              {
-                name: tool.name,
-                description: tool.description,
-                type: tool.type as ToolType,
-                function: {
-                  name: tool.name,
-                  description: tool.description,
-                  parameters: tool.inputSchema
-                }
-              },
-              JSON.parse(toolCalls[0].function.arguments)
-            );
-
-            // Store execution in database
-            await db.insert(toolExecutions).values({
-              toolId: tool.id,
-              input: JSON.parse(toolCalls[0].function.arguments),
-              output: result,
-            });
-
-            // Continue conversation with tool result
-            const updatedMessages = [
-              ...messages, 
-              lastMessage,
-              {
-                role: "tool",
-                content: JSON.stringify(result),
-                tool_call_id: toolCalls[0].id
-              }
-            ];
-
-            const finalResponse = await sendChatMessage(updatedMessages, availableTools as Tool[]);
-            res.json(finalResponse);
-          } catch (error: any) {
-            console.error('Tool execution error:', error);
-            res.status(500).json({ error: error.message || 'Unknown error occurred' });
-          }
-        }
-      } else {
-        // For regular responses without tool use
-        res.json(response);
-      }
-
-    } catch (error: any) {
-      console.error("Chat error:", error);
-      res.status(500).json({ error: error?.message || 'Unknown error occurred' });
+      res.json(response);
+    } catch (error) {
+      console.error('❌ Chat Error:', error);
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error occurred' });
     }
   });
 
