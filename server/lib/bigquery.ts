@@ -20,7 +20,7 @@ const bigquery = new BigQuery({
 export interface BigQueryResult {
   rows: Record<string, any>[];
   totalRows: number;
-  schema: {
+  schema?: {
     fields: Array<{
       name: string;
       type: string;
@@ -40,18 +40,27 @@ export async function executeBigQueryQuery(query: string): Promise<BigQueryResul
     const [rows] = await job.getQueryResults();
     const [metadata] = await job.getMetadata();
 
-    // Get schema information
-    const schema = {
-      fields: metadata.statistics.query.schema.fields.map((field: any) => ({
-        name: field.name,
-        type: field.type,
-      })),
-    };
+    // Try to extract schema information safely
+    let schema;
+    try {
+      if (metadata?.statistics?.query?.schema?.fields) {
+        schema = {
+          fields: metadata.statistics.query.schema.fields.map((field: any) => ({
+            name: field.name,
+            type: field.type,
+          })),
+        };
+      }
+    } catch (schemaError) {
+      console.warn('Could not extract schema information:', schemaError);
+      // Continue without schema information
+    }
 
+    // Return results with optional schema
     return {
-      rows,
-      totalRows: rows.length,
-      schema,
+      rows: rows || [],
+      totalRows: rows?.length || 0,
+      ...(schema && { schema }),
     };
   } catch (error: any) {
     console.error('BigQuery Error:', error);
