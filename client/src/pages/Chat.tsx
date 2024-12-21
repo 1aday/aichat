@@ -34,7 +34,6 @@ export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [currentToolCall, setCurrentToolCall] = useState<ToolCall | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { data: tools = [] } = useQuery({
@@ -62,14 +61,33 @@ export default function Chat() {
     }
   };
 
+  // Update tool call status in messages
+  const updateToolCallStatus = (messageIndex: number, toolCallId: string, status: ToolCall['status']) => {
+    setMessages(prevMessages => {
+      const newMessages = [...prevMessages];
+      const message = newMessages[messageIndex];
+
+      if (message && message.tool_calls) {
+        message.tool_calls = message.tool_calls.map(call => {
+          if (call.id === toolCallId) {
+            return { ...call, status };
+          }
+          return call;
+        });
+      }
+
+      return newMessages;
+    });
+  };
+
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
 
     const userMessage = input.trim();
     setInput("");
-    setCurrentToolCall(null);
 
+    // Add user message
     const newUserMessage: Message = { role: "user", content: userMessage };
     setMessages(prev => [...prev, newUserMessage]);
     setIsLoading(true);
@@ -88,19 +106,72 @@ export default function Chat() {
       }
 
       const data = await response.json();
-
-      // Process tool calls in the response
       const assistantMessage = data.messages[data.messages.length - 1];
+
+      // If we have tool calls, set their initial status to pending
       if (assistantMessage.tool_calls) {
-        // Update tool call status to pending when received from Claude
         assistantMessage.tool_calls = assistantMessage.tool_calls.map((call: ToolCall) => ({
           ...call,
           status: "pending"
         }));
-        setCurrentToolCall(assistantMessage.tool_calls[0]);
-      }
 
-      setMessages(data.messages);
+        // Add the assistant message with pending tool calls
+        setMessages(prev => [...prev, assistantMessage]);
+        const messageIndex = data.messages.length - 1;
+
+        // For each tool call, execute it and update status
+        for (const toolCall of assistantMessage.tool_calls) {
+          // Update status to executing
+          updateToolCallStatus(messageIndex, toolCall.id, "executing");
+
+          // Make the tool call
+          try {
+            const toolResponse = await fetch("/api/execute-tool", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ toolCall }),
+            });
+
+            if (!toolResponse.ok) {
+              throw new Error(await toolResponse.text());
+            }
+
+            // Update status to completed
+            updateToolCallStatus(messageIndex, toolCall.id, "completed");
+
+            // Add tool response message
+            const toolResult = await toolResponse.json();
+            setMessages(prev => [...prev, {
+              role: "tool",
+              content: toolResult.result,
+              tool_call_id: toolCall.id
+            }]);
+          } catch (error) {
+            // Update status to failed
+            updateToolCallStatus(messageIndex, toolCall.id, "failed");
+            throw error;
+          }
+        }
+
+        // Get final response from Claude
+        const finalResponse = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            messages: [...data.messages]
+          }),
+        });
+
+        if (!finalResponse.ok) {
+          throw new Error(await finalResponse.text());
+        }
+
+        const finalData = await finalResponse.json();
+        setMessages(finalData.messages);
+      } else {
+        // No tool calls, just update messages
+        setMessages(data.messages);
+      }
     } catch (error: any) {
       console.error("Chat error:", error);
       setMessages(prev => [...prev, { 
