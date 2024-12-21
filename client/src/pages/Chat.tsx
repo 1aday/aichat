@@ -8,7 +8,7 @@ import { Send } from "lucide-react";
 
 interface Message {
   role: "user" | "assistant";
-  content: string;
+  content: string | any[];
 }
 
 export default function Chat() {
@@ -27,14 +27,19 @@ export default function Chat() {
 
     const userMessage = input.trim();
     setInput("");
-    setMessages(prev => [...prev, { role: "user", content: userMessage }]);
+
+    // Add user message to history
+    const newUserMessage: Message = { role: "user", content: userMessage };
+    setMessages(prev => [...prev, newUserMessage]);
     setIsLoading(true);
 
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMessage }),
+        body: JSON.stringify({ 
+          messages: [...messages, newUserMessage]
+        }),
       });
 
       if (!response.ok) {
@@ -42,7 +47,14 @@ export default function Chat() {
       }
 
       const data = await response.json();
-      setMessages(prev => [...prev, { role: "assistant", content: data.response }]);
+
+      // Update messages with the complete conversation history
+      if (data.messages) {
+        setMessages(data.messages);
+      } else {
+        // Fallback for simple responses
+        setMessages(prev => [...prev, { role: "assistant", content: data.response }]);
+      }
     } catch (error) {
       console.error("Chat error:", error);
       setMessages(prev => [...prev, { 
@@ -52,6 +64,41 @@ export default function Chat() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  // Helper function to render message content
+  function renderMessageContent(content: string | any[]) {
+    if (typeof content === 'string') {
+      return content;
+    }
+
+    // Handle array of content blocks
+    return content.map((block: any, index: number) => {
+      if (block.type === 'text') {
+        return <div key={index}>{block.text}</div>;
+      }
+      if (block.type === 'tool_use') {
+        return (
+          <div key={index} className="bg-gray-100 p-2 rounded">
+            Using tool: {block.name}
+            <pre className="mt-1 text-sm">
+              {JSON.stringify(block.input, null, 2)}
+            </pre>
+          </div>
+        );
+      }
+      if (block.type === 'tool_result') {
+        return (
+          <div key={index} className="bg-gray-100 p-2 rounded">
+            Tool result:
+            <pre className="mt-1 text-sm">
+              {block.content}
+            </pre>
+          </div>
+        );
+      }
+      return null;
+    });
   }
 
   return (
@@ -78,7 +125,7 @@ export default function Chat() {
                         : "bg-[#8445ff] text-white"
                     }`}
                   >
-                    {message.content}
+                    {renderMessageContent(message.content)}
                   </div>
                 </div>
               ))}

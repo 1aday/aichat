@@ -111,36 +111,101 @@ export function registerRoutes(app: Express) {
       // Get available tools
       const availableTools = await db.select().from(tools);
 
-      const toolDefinitions = availableTools.map(tool => {
-        // Prepare the tool definition according to Anthropic's API requirements
-        return {
-          name: tool.name,
-          description: tool.description,
-          input_schema: {
-            type: "object",
-            properties: tool.inputSchema.properties,
-            required: tool.inputSchema.required || []
-          }
-        };
-      });
+      const toolDefinitions = availableTools.map(tool => ({
+        name: tool.name,
+        description: tool.description,
+        input_schema: {
+          type: "object",
+          properties: tool.inputSchema.properties,
+          required: tool.inputSchema.required || []
+        }
+      }));
+
+      let messages = req.body.messages || [];
+      if (!Array.isArray(messages)) {
+        messages = [{ role: "user", content: req.body.message }];
+      }
 
       const response = await anthropic.messages.create({
         model: "claude-3-5-sonnet-20241022",
         max_tokens: 1024,
         tools: toolDefinitions,
-        messages: [{
-          role: "user",
-          content: req.body.message
-        }],
+        messages: messages,
       });
 
-      // Handle normal response without tool use
-      if (!response.content[0] || response.content[0].type !== 'text') {
-        res.json({ response: "I couldn't generate a proper response." });
-        return;
+      // Check if Claude wants to use a tool
+      if (response.stop_reason === 'tool_use') {
+        // Get the tool use request from the last content block
+        const toolUseBlock = response.content[response.content.length - 1];
+
+        if (toolUseBlock.type === 'tool_use') {
+          // Find the corresponding tool
+          const tool = availableTools.find(t => t.name === toolUseBlock.name);
+
+          if (tool) {
+            // Execute the tool
+            const result = await executeToolWithClaude(
+              {
+                name: tool.name,
+                description: tool.description,
+                type: tool.type as ToolType,
+                config: tool.config,
+                input_schema: tool.inputSchema
+              },
+              toolUseBlock.input,
+              "Execute this tool with the provided input"
+            );
+
+            // Log the execution
+            await db.insert(toolExecutions).values({
+              toolId: tool.id,
+              input: toolUseBlock.input,
+              output: result,
+            });
+
+            // Create a new message array including the tool result
+            const updatedMessages = [
+              ...messages,
+              { role: "assistant", content: response.content },
+              { 
+                role: "user", 
+                content: [
+                  {
+                    type: "tool_result",
+                    tool_call_id: toolUseBlock.id,
+                    content: JSON.stringify(result)
+                  }
+                ]
+              }
+            ];
+
+            // Get final response from Claude with the tool result
+            const finalResponse = await anthropic.messages.create({
+              model: "claude-3-5-sonnet-20241022",
+              max_tokens: 1024,
+              messages: updatedMessages,
+            });
+
+            res.json({ 
+              response: finalResponse.content[0].text,
+              messages: updatedMessages
+            });
+            return;
+          }
+        }
       }
 
-      res.json({ response: response.content[0].text });
+      // For regular responses without tool use
+      const responseMessages = [
+        ...messages,
+        { role: "assistant", content: response.content }
+      ];
+
+      res.json({ 
+        response: response.content[0].text,
+        messages: responseMessages
+      });
+
     } catch (error: any) {
       console.error("Chat error:", error);
       res.status(500).json({ error: error?.message || 'Unknown error occurred' });
