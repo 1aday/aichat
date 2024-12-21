@@ -20,8 +20,6 @@ async function executeToolWithClaude(toolDef: ToolDefinition, input: any): Promi
         if (!input?.query) {
           throw new Error('Query is required for BigQuery tool');
         }
-        console.log('Executing BigQuery tool with input:', input);
-        console.log('Raw query from Claude:', input.query);
         return await executeBigQueryQuery(input.query);
       default:
         throw new Error(`Unknown tool: ${toolDef.name}`);
@@ -45,7 +43,7 @@ export function registerRoutes(app: Express) {
         // Create BigQuery tool if it doesn't exist
         const [tool] = await db.insert(tools).values({
           name: "bigquery",
-          description: "Execute BigQuery SQL queries to analyze data. Use this tool when you need to query data from BigQuery tables. The dataset location is in US region.",
+          description: "Execute BigQuery SQL queries to analyze data. Use this tool when you need to query data from BigQuery tables.",
           type: "client" as ToolType,
           config: {},
           inputSchema: {
@@ -53,7 +51,7 @@ export function registerRoutes(app: Express) {
             properties: {
               query: {
                 type: "string",
-                description: "The SQL query to execute on BigQuery. The dataset is located in US region."
+                description: "The SQL query to execute"
               }
             },
             required: ["query"]
@@ -97,8 +95,6 @@ export function registerRoutes(app: Express) {
         messages = [{ role: "user", content: req.body.message }];
       }
 
-      console.log('Sending request to Claude with tools:', JSON.stringify(toolDefinitions, null, 2));
-
       const response = await anthropic.messages.create({
         model: "claude-3-5-sonnet-20241022",
         max_tokens: 1024,
@@ -106,22 +102,17 @@ export function registerRoutes(app: Express) {
         tools: toolDefinitions
       });
 
-      console.log('Claude response:', JSON.stringify(response, null, 2));
-
       // Handle tool calls
       if (response.stop_reason === 'tool_use') {
         // Get the tool use request from the last content block
         const toolUseBlock = response.content[response.content.length - 1];
-        console.log('Tool use block from Claude:', JSON.stringify(toolUseBlock, null, 2));
 
         if (toolUseBlock.type === 'tool_use') {
           // Find the corresponding tool
           const tool = availableTools.find(t => t.name === toolUseBlock.name);
-          console.log('Found matching tool:', tool?.name);
 
           if (tool) {
             try {
-              console.log('Executing tool with input:', toolUseBlock.input);
               // Execute the tool
               const result = await executeToolWithClaude(
                 {
@@ -149,7 +140,7 @@ export function registerRoutes(app: Express) {
                   role: "user",
                   content: [{
                     type: "tool_result",
-                    tool_call_id: toolUseBlock.id,
+                    tool_use_id: toolUseBlock.id,
                     content: JSON.stringify(result)
                   }]
                 }
@@ -173,7 +164,12 @@ export function registerRoutes(app: Express) {
               return;
             } catch (error: any) {
               console.error('Tool execution error:', error);
-              res.status(500).json({ error: error.message });
+              // Pass the actual error message to the client
+              if (error.errors && error.errors[0]) {
+                res.status(500).json({ error: error.errors[0].message });
+              } else {
+                res.status(500).json({ error: error.message || 'Unknown error occurred' });
+              }
               return;
             }
           }
