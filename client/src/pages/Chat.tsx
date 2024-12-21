@@ -18,7 +18,6 @@ interface Message {
   content: string;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
-  status?: "in_progress" | "completed" | "failed";
 }
 
 interface ToolCall {
@@ -49,9 +48,8 @@ export default function Chat() {
     scrollToBottom();
   }, [messages]);
 
-  // Calculate the current progress based on tool call status
-  const calculateProgress = (toolCall: ToolCall | null) => {
-    if (!toolCall) return 0;
+  // Calculate progress based on tool status
+  const calculateProgress = (toolCall: ToolCall) => {
     switch (toolCall.status) {
       case "pending": return 33;
       case "executing": return 66;
@@ -61,23 +59,64 @@ export default function Chat() {
     }
   };
 
-  // Update tool call status in messages
-  const updateToolCallStatus = (messageIndex: number, toolCallId: string, status: ToolCall['status']) => {
-    setMessages(prevMessages => {
-      const newMessages = [...prevMessages];
-      const message = newMessages[messageIndex];
+  // Add or update a message in the chat
+  const addOrUpdateMessage = (newMessage: Message) => {
+    setMessages(prev => {
+      // If this is a tool response, find the assistant message with the matching tool call
+      if (newMessage.role === "tool" && newMessage.tool_call_id) {
+        return [...prev, newMessage];
+      }
+      return [...prev, newMessage];
+    });
+  };
 
-      if (message && message.tool_calls) {
-        message.tool_calls = message.tool_calls.map(call => {
-          if (call.id === toolCallId) {
-            return { ...call, status };
-          }
-          return call;
-        });
+  // Update tool status in real-time
+  const updateToolStatus = (toolCallId: string, status: ToolCall['status']) => {
+    setMessages(prev => prev.map(msg => {
+      if (msg.tool_calls) {
+        return {
+          ...msg,
+          tool_calls: msg.tool_calls.map(tool => 
+            tool.id === toolCallId ? { ...tool, status } : tool
+          )
+        };
+      }
+      return msg;
+    }));
+  };
+
+  // Handle tool execution separately from message flow
+  const executeToolCall = async (toolCall: ToolCall) => {
+    try {
+      updateToolStatus(toolCall.id, "executing");
+
+      const toolResponse = await fetch("/api/execute-tool", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ toolCall }),
+      });
+
+      if (!toolResponse.ok) {
+        throw new Error(await toolResponse.text());
       }
 
-      return newMessages;
-    });
+      const toolResult = await toolResponse.json();
+
+      // Mark tool as completed
+      updateToolStatus(toolCall.id, "completed");
+
+      // Add tool response
+      addOrUpdateMessage({
+        role: "tool",
+        content: toolResult.result,
+        tool_call_id: toolCall.id
+      });
+
+      return toolResult;
+    } catch (error) {
+      updateToolStatus(toolCall.id, "failed");
+      throw error;
+    }
   };
 
   async function sendMessage(e: React.FormEvent) {
@@ -87,12 +126,13 @@ export default function Chat() {
     const userMessage = input.trim();
     setInput("");
 
-    // Add user message
+    // Add user message immediately
     const newUserMessage: Message = { role: "user", content: userMessage };
-    setMessages(prev => [...prev, newUserMessage]);
+    addOrUpdateMessage(newUserMessage);
     setIsLoading(true);
 
     try {
+      // Get initial response from Claude
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -108,57 +148,42 @@ export default function Chat() {
       const data = await response.json();
       const assistantMessage = data.messages[data.messages.length - 1];
 
-      // If we have tool calls, set their initial status to pending
+      // If there are tool calls, set up for execution
       if (assistantMessage.tool_calls) {
-        assistantMessage.tool_calls = assistantMessage.tool_calls.map((call: ToolCall) => ({
+        // Initialize tool calls with pending status
+        assistantMessage.tool_calls = assistantMessage.tool_calls.map(call => ({
           ...call,
           status: "pending"
         }));
 
-        // Add the assistant message with pending tool calls
-        setMessages(prev => [...prev, assistantMessage]);
-        const messageIndex = data.messages.length - 1;
+        // Add assistant message with pending tool calls
+        addOrUpdateMessage(assistantMessage);
 
-        // For each tool call, execute it and update status
+        // Execute each tool call
+        const toolResults = [];
         for (const toolCall of assistantMessage.tool_calls) {
-          // Update status to executing
-          updateToolCallStatus(messageIndex, toolCall.id, "executing");
-
-          // Make the tool call
           try {
-            const toolResponse = await fetch("/api/execute-tool", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ toolCall }),
-            });
-
-            if (!toolResponse.ok) {
-              throw new Error(await toolResponse.text());
-            }
-
-            // Update status to completed
-            updateToolCallStatus(messageIndex, toolCall.id, "completed");
-
-            // Add tool response message
-            const toolResult = await toolResponse.json();
-            setMessages(prev => [...prev, {
-              role: "tool",
-              content: toolResult.result,
-              tool_call_id: toolCall.id
-            }]);
+            const result = await executeToolCall(toolCall);
+            toolResults.push(result);
           } catch (error) {
-            // Update status to failed
-            updateToolCallStatus(messageIndex, toolCall.id, "failed");
-            throw error;
+            console.error("Tool execution error:", error);
           }
         }
 
-        // Get final response from Claude
+        // Get final response from Claude with tool results
         const finalResponse = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ 
-            messages: [...data.messages]
+            messages: [
+              ...messages, 
+              newUserMessage,
+              assistantMessage,
+              ...toolResults.map(result => ({
+                role: "tool",
+                content: result.result
+              }))
+            ]
           }),
         });
 
@@ -167,23 +192,23 @@ export default function Chat() {
         }
 
         const finalData = await finalResponse.json();
-        setMessages(finalData.messages);
+        addOrUpdateMessage(finalData.messages[finalData.messages.length - 1]);
       } else {
-        // No tool calls, just update messages
-        setMessages(data.messages);
+        // No tool calls, just add the assistant message
+        addOrUpdateMessage(assistantMessage);
       }
     } catch (error: any) {
       console.error("Chat error:", error);
-      setMessages(prev => [...prev, { 
+      addOrUpdateMessage({ 
         role: "assistant", 
         content: `Error: ${error.message || 'An unexpected error occurred'}` 
-      }]);
+      });
     } finally {
       setIsLoading(false);
     }
   }
 
-  // Render tool execution progress
+  // Render tool progress indicator
   function renderToolProgress(toolCall: ToolCall) {
     const progress = calculateProgress(toolCall);
     let statusText = "Preparing to execute...";
@@ -313,7 +338,7 @@ export default function Chat() {
                   <div className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 max-w-[85%] rounded-2xl px-4 py-3 shadow-sm">
                     <div className="flex items-center space-x-2">
                       <Loader2 className="h-4 w-4 animate-spin text-[#8445ff]" />
-                      <span className="text-sm font-medium">Processing...</span>
+                      <span className="text-sm font-medium">Waiting for response...</span>
                     </div>
                   </div>
                 </motion.div>
