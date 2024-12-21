@@ -18,8 +18,12 @@ export async function sendChatMessage(messages: any[], tools: Tool[]): Promise<O
       function: {
         name: tool.name,
         description: tool.description,
-        parameters: tool.inputSchema,
-        strict: true
+        parameters: {
+          type: "object",
+          properties: tool.inputSchema.properties,
+          required: tool.inputSchema.required || [],
+          additionalProperties: false
+        }
       }
     }));
 

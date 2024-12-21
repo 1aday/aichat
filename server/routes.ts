@@ -1,13 +1,13 @@
 import type { Express } from "express";
-import { createServer } from "http";
+import { createServer, type Server } from "http";
 import { db } from "@db";
 import { tools, toolExecutions } from "@db/schema";
 import { executeBigQueryQuery } from "./lib/bigquery";
 import { sendChatMessage } from "./lib/openai";
 import { eq } from "drizzle-orm";
-import type { ToolDefinition, Tool, ToolType } from "../client/src/lib/types";
+import type { Tool, ToolType } from "../client/src/lib/types";
 
-async function executeToolWithOpenAI(toolDef: ToolDefinition, input: any): Promise<any> {
+async function executeToolWithOpenAI(toolDef: { name: string; description: string; type: ToolType; function: { name: string; description: string; parameters: any; }; }, input: any): Promise<any> {
   try {
     switch (toolDef.name) {
       case 'bigquery':
