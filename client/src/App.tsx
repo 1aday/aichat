@@ -1,22 +1,69 @@
 import { Switch, Route } from "wouter";
 import Home from "@/pages/Home";
 import ToolConfig from "@/pages/ToolConfig";
+import Chat from "@/pages/Chat";
 import { Card, CardContent } from "@/components/ui/card";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Home as HomeIcon, Plus, MessageSquare } from "lucide-react";
+import { Link, useLocation } from "wouter";
 
 function App() {
+  const [location] = useLocation();
+
   return (
-    <Switch>
-      <Route path="/" component={Home} />
-      <Route path="/tools/new" component={ToolConfig} />
-      <Route component={NotFound} />
-    </Switch>
+    <div>
+      <nav className="border-b">
+        <div className="container mx-auto px-4">
+          <div className="flex h-16 items-center justify-between">
+            <div className="flex items-center">
+              <h1 className="text-2xl font-black font-montserrat text-[#8445ff]">
+                Claude Tool Manager
+              </h1>
+            </div>
+            <div className="flex items-center space-x-4">
+              <Link href="/">
+                <a className={`flex items-center space-x-1 px-3 py-2 rounded-md ${
+                  location === "/" ? "bg-[#e9dff0]" : "hover:bg-gray-100"
+                }`}>
+                  <HomeIcon className="h-4 w-4" />
+                  <span>Home</span>
+                </a>
+              </Link>
+              <Link href="/tools/new">
+                <a className={`flex items-center space-x-1 px-3 py-2 rounded-md ${
+                  location === "/tools/new" ? "bg-[#e9dff0]" : "hover:bg-gray-100"
+                }`}>
+                  <Plus className="h-4 w-4" />
+                  <span>Add Tool</span>
+                </a>
+              </Link>
+              <Link href="/chat">
+                <a className={`flex items-center space-x-1 px-3 py-2 rounded-md ${
+                  location === "/chat" ? "bg-[#e9dff0]" : "hover:bg-gray-100"
+                }`}>
+                  <MessageSquare className="h-4 w-4" />
+                  <span>Chat</span>
+                </a>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      <main className="min-h-screen bg-gray-50">
+        <Switch>
+          <Route path="/" component={Home} />
+          <Route path="/tools/new" component={ToolConfig} />
+          <Route path="/chat" component={Chat} />
+          <Route component={NotFound} />
+        </Switch>
+      </main>
+    </div>
   );
 }
 
 function NotFound() {
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen w-full flex items-center justify-center">
       <Card className="w-full max-w-md mx-4">
         <CardContent className="pt-6">
           <div className="flex mb-4 gap-2">
