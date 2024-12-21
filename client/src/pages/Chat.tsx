@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
 import {
   Collapsible,
   CollapsibleContent,
@@ -15,8 +16,9 @@ import { motion, AnimatePresence } from "framer-motion";
 interface Message {
   role: "user" | "assistant" | "tool";
   content: string;
-  tool_calls?: any[];
+  tool_calls?: ToolCall[];
   tool_call_id?: string;
+  status?: "in_progress" | "completed" | "failed";
 }
 
 interface ToolCall {
@@ -25,12 +27,14 @@ interface ToolCall {
     name: string;
     arguments: string;
   };
+  status?: "pending" | "executing" | "completed" | "failed";
 }
 
 export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [currentToolCall, setCurrentToolCall] = useState<ToolCall | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { data: tools = [] } = useQuery({
@@ -46,12 +50,25 @@ export default function Chat() {
     scrollToBottom();
   }, [messages]);
 
+  // Calculate the current progress based on tool call status
+  const calculateProgress = (toolCall: ToolCall | null) => {
+    if (!toolCall) return 0;
+    switch (toolCall.status) {
+      case "pending": return 33;
+      case "executing": return 66;
+      case "completed": return 100;
+      case "failed": return 100;
+      default: return 0;
+    }
+  };
+
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
 
     const userMessage = input.trim();
     setInput("");
+    setCurrentToolCall(null);
 
     const newUserMessage: Message = { role: "user", content: userMessage };
     setMessages(prev => [...prev, newUserMessage]);
@@ -67,24 +84,55 @@ export default function Chat() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to send message');
+        throw new Error(await response.text());
       }
 
       const data = await response.json();
+
+      // Process tool calls in the response
+      const assistantMessage = data.messages[data.messages.length - 1];
+      if (assistantMessage.tool_calls) {
+        // Update tool call status to pending when received from Claude
+        assistantMessage.tool_calls = assistantMessage.tool_calls.map((call: ToolCall) => ({
+          ...call,
+          status: "pending"
+        }));
+        setCurrentToolCall(assistantMessage.tool_calls[0]);
+      }
+
       setMessages(data.messages);
     } catch (error: any) {
       console.error("Chat error:", error);
       setMessages(prev => [...prev, { 
         role: "assistant", 
-        content: `Error: ${error.message || 'An unexpected error occurred. Please try again.'}` 
+        content: `Error: ${error.message || 'An unexpected error occurred'}` 
       }]);
     } finally {
       setIsLoading(false);
     }
   }
 
-  function renderToolCall(toolCall: ToolCall) {
+  // Render tool execution progress
+  function renderToolProgress(toolCall: ToolCall) {
+    const progress = calculateProgress(toolCall);
+    let statusText = "Preparing to execute...";
+    let statusColor = "text-blue-500";
+
+    switch (toolCall.status) {
+      case "executing":
+        statusText = "Executing tool function...";
+        statusColor = "text-yellow-500";
+        break;
+      case "completed":
+        statusText = "Tool execution completed";
+        statusColor = "text-green-500";
+        break;
+      case "failed":
+        statusText = "Tool execution failed";
+        statusColor = "text-red-500";
+        break;
+    }
+
     return (
       <div className="relative mt-4 mb-2">
         {/* Progress Line */}
@@ -92,16 +140,27 @@ export default function Chat() {
 
         {/* Tool Execution Step */}
         <div className="relative flex items-start gap-3">
-          <div className="relative z-10 flex h-6 w-6 items-center justify-center rounded-full bg-primary shadow-sm">
-            <Terminal className="h-3 w-3 text-white" />
+          <div className={`relative z-10 flex h-6 w-6 items-center justify-center rounded-full ${
+            toolCall.status === "completed" ? "bg-green-500" : 
+            toolCall.status === "failed" ? "bg-red-500" : 
+            "bg-primary"
+          } shadow-sm`}>
+            {toolCall.status === "completed" ? (
+              <Check className="h-3 w-3 text-white" />
+            ) : (
+              <Terminal className="h-3 w-3 text-white" />
+            )}
           </div>
-          <div>
+          <div className="flex-1">
             <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
               Using Tool: {toolCall.function.name}
             </p>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Processing request...
+            <p className={`mt-1 text-xs ${statusColor}`}>
+              {statusText}
             </p>
+            <div className="mt-2 w-full max-w-md">
+              <Progress value={progress} className="h-1" />
+            </div>
           </div>
         </div>
 
@@ -135,7 +194,7 @@ export default function Chat() {
         {/* Render tool calls if present */}
         {message.tool_calls?.map((toolCall) => (
           <div key={`tool-${toolCall.id}`}>
-            {renderToolCall(toolCall)}
+            {renderToolProgress(toolCall)}
           </div>
         ))}
       </>
@@ -147,7 +206,7 @@ export default function Chat() {
       <div className="max-w-4xl mx-auto pt-8 pb-24 px-4">
         <div className="relative h-[calc(100vh-8rem)]">
           <div className="absolute inset-0 flex flex-col">
-            {/* Messages Container with backdrop blur */}
+            {/* Messages Container */}
             <div className="flex-1 overflow-y-auto space-y-4 scroll-smooth px-2 messages-container rounded-2xl">
               <AnimatePresence initial={false}>
                 {messages.map((message, i) => (
@@ -171,6 +230,8 @@ export default function Chat() {
                   )
                 ))}
               </AnimatePresence>
+
+              {/* Loading State */}
               {isLoading && (
                 <motion.div 
                   initial={{ opacity: 0, y: 20 }}
