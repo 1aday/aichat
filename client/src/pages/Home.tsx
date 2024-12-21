@@ -1,15 +1,29 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { listTools } from "@/lib/api";
+import { useEffect } from "react";
 
 export default function Home() {
+  const queryClient = useQueryClient();
+
   const { data: tools = [], isLoading } = useQuery({
     queryKey: ['/api/tools'],
     queryFn: listTools,
   });
+
+  // Setup default tools when the page loads
+  useEffect(() => {
+    fetch('/api/setup-default-tools')
+      .then(res => res.json())
+      .then(() => {
+        // Invalidate tools query to reload the list
+        queryClient.invalidateQueries({ queryKey: ['/api/tools'] });
+      })
+      .catch(console.error);
+  }, [queryClient]);
 
   return (
     <div className="container mx-auto py-8">
@@ -69,7 +83,7 @@ export default function Home() {
                   <CardContent>
                     <div className="bg-[#e9dff0] rounded-lg p-4">
                       <pre className="text-sm overflow-x-auto">
-                        {JSON.stringify(tool.input_schema, null, 2)}
+                        {JSON.stringify(tool.inputSchema, null, 2)}
                       </pre>
                     </div>
                   </CardContent>
