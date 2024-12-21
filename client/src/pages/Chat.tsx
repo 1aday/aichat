@@ -50,6 +50,7 @@ export default function Chat() {
 
   // Calculate progress based on tool status
   const calculateProgress = (toolCall: ToolCall) => {
+    console.log('Calculating progress for tool:', toolCall.id, 'Status:', toolCall.status);
     switch (toolCall.status) {
       case "pending": return 33;
       case "executing": return 66;
@@ -61,20 +62,26 @@ export default function Chat() {
 
   // Execute a single tool call and update its status
   const executeToolCall = async (toolCall: ToolCall, messageIndex: number) => {
+    console.log('Executing tool call:', toolCall.id, 'Message index:', messageIndex);
     try {
       // Update status to executing
-      setMessages(prev => prev.map((msg, idx) => 
-        idx === messageIndex && msg.tool_calls
-          ? {
-              ...msg,
-              tool_calls: msg.tool_calls.map(tc =>
-                tc.id === toolCall.id 
-                  ? { ...tc, status: "executing" } 
-                  : tc
-              )
-            }
-          : msg
-      ));
+      console.log('Setting tool status to executing');
+      setMessages(prev => {
+        const updatedMessages = prev.map((msg, idx) => 
+          idx === messageIndex && msg.tool_calls
+            ? {
+                ...msg,
+                tool_calls: msg.tool_calls.map(tc =>
+                  tc.id === toolCall.id 
+                    ? { ...tc, status: "executing" } 
+                    : tc
+                )
+              }
+            : msg
+        );
+        console.log('Messages after setting executing status:', updatedMessages);
+        return updatedMessages;
+      });
 
       const toolResponse = await fetch("/api/execute-tool", {
         method: "POST",
@@ -87,10 +94,11 @@ export default function Chat() {
       }
 
       const toolResult = await toolResponse.json();
+      console.log('Tool execution completed:', toolResult);
 
       // Update status to completed and add tool result
       setMessages(prev => {
-        const newMessages = prev.map((msg, idx) =>
+        const updatedMessages = prev.map((msg, idx) =>
           idx === messageIndex && msg.tool_calls
             ? {
                 ...msg,
@@ -103,18 +111,22 @@ export default function Chat() {
             : msg
         );
 
-        return [
-          ...newMessages,
-          {
-            role: "tool",
-            content: toolResult.result,
-            tool_call_id: toolCall.id
-          }
-        ];
+        console.log('Messages after completion:', [...updatedMessages, {
+          role: "tool",
+          content: toolResult.result,
+          tool_call_id: toolCall.id
+        }]);
+
+        return [...updatedMessages, {
+          role: "tool",
+          content: toolResult.result,
+          tool_call_id: toolCall.id
+        }];
       });
 
       return toolResult;
     } catch (error) {
+      console.error('Tool execution failed:', error);
       // Update status to failed
       setMessages(prev => prev.map((msg, idx) =>
         idx === messageIndex && msg.tool_calls
@@ -141,11 +153,12 @@ export default function Chat() {
 
     // Add user message immediately
     const newUserMessage: Message = { role: "user", content: userMessage };
+    console.log('Adding user message:', newUserMessage);
     setMessages(prev => [...prev, newUserMessage]);
     setIsWaitingForResponse(true);
 
     try {
-      // Get initial response from OpenAI
+      console.log('Sending message to API');
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -160,9 +173,11 @@ export default function Chat() {
 
       const data = await response.json();
       const assistantMessage = data.messages[data.messages.length - 1];
+      console.log('Received assistant message:', assistantMessage);
 
       // If there are tool calls, handle them immediately
       if (assistantMessage.tool_calls) {
+        console.log('Tool calls detected:', assistantMessage.tool_calls);
         // Add assistant message with pending tool calls
         const messageWithPendingTools = {
           ...assistantMessage,
@@ -172,16 +187,19 @@ export default function Chat() {
           }))
         };
 
+        console.log('Adding message with pending tools:', messageWithPendingTools);
         setMessages(prev => [...prev, messageWithPendingTools]);
         setIsWaitingForResponse(false);
         setIsProcessingTools(true);
 
         const messageIndex = messages.length + 1; // +1 for the user message we just added
+        console.log('Tool message index:', messageIndex);
         const toolResults = [];
 
         // Execute each tool call
         for (const toolCall of messageWithPendingTools.tool_calls) {
           try {
+            console.log('Starting tool execution:', toolCall.id);
             const result = await executeToolCall(toolCall, messageIndex);
             toolResults.push(result);
           } catch (error) {
@@ -189,10 +207,12 @@ export default function Chat() {
           }
         }
 
+        console.log('All tool executions completed');
         setIsProcessingTools(false);
         setIsWaitingForResponse(true);
 
         // Get final response with tool results
+        console.log('Getting final response with tool results');
         const finalResponse = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -215,9 +235,11 @@ export default function Chat() {
 
         const finalData = await finalResponse.json();
         const finalMessage = finalData.messages[finalData.messages.length - 1];
+        console.log('Final assistant message:', finalMessage);
         setMessages(prev => [...prev, finalMessage]);
       } else {
         // No tool calls, just add the assistant message
+        console.log('No tool calls, adding regular assistant message');
         setMessages(prev => [...prev, assistantMessage]);
       }
     } catch (error: any) {
@@ -233,6 +255,7 @@ export default function Chat() {
   }
 
   function renderToolProgress(toolCall: ToolCall) {
+    console.log('Rendering tool progress:', toolCall);
     const progress = calculateProgress(toolCall);
     let statusText = "Preparing to execute...";
     let statusColor = "text-blue-500";
@@ -305,6 +328,7 @@ export default function Chat() {
   }
 
   function renderMessage(message: Message) {
+    console.log('Rendering message:', message);
     return (
       <>
         {/* Render message content */}
