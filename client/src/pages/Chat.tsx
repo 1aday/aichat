@@ -85,10 +85,10 @@ export default function Chat() {
       }
       if (block.type === 'tool_use') {
         return (
-          <div key={index} className="font-mono text-sm space-y-1">
-            <p className="text-xs text-gray-500 dark:text-gray-400">Using tool: {block.name}</p>
+          <div key={index} className="text-sm space-y-1">
+            <p className="text-xs text-gray-500">Using tool: {block.name}</p>
             <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3">
-              <pre className="overflow-x-auto text-gray-800 dark:text-gray-200">
+              <pre className="font-mono text-gray-800 dark:text-gray-200 overflow-x-auto">
                 {JSON.stringify(block.input, null, 2)}
               </pre>
             </div>
@@ -97,10 +97,10 @@ export default function Chat() {
       }
       if (block.type === 'tool_result') {
         return (
-          <div key={index} className="font-mono text-sm space-y-1 justify-start"> {/* Added justify-start */}
-            <p className="text-xs text-gray-500 dark:text-gray-400">Tool result:</p>
+          <div key={index} className="text-sm space-y-1">
+            <p className="text-xs text-gray-500">Tool result:</p>
             <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3">
-              <pre className="overflow-x-auto text-gray-800 dark:text-gray-200">
+              <pre className="font-mono text-gray-800 dark:text-gray-200 overflow-x-auto">
                 {block.content}
               </pre>
             </div>
@@ -125,22 +125,18 @@ export default function Chat() {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -20 }}
-                    transition={{ 
-                      duration: 0.3,
-                      ease: [0.23, 1, 0.32, 1]
-                    }}
+                    transition={{ duration: 0.3 }}
                     className={`flex ${message.role === "assistant" ? "justify-start" : "justify-end"}`}
                   >
-                    <motion.div
-                      whileHover={{ scale: 1.01 }}
-                      className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm hover:shadow-md transition-shadow message-bubble ${
+                    <div
+                      className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm message-bubble ${
                         message.role === "assistant"
                           ? "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                           : "bg-[#8445ff] text-white ml-auto"
                       }`}
                     >
                       {renderMessageContent(message.content)}
-                    </motion.div>
+                    </div>
                   </motion.div>
                 ))}
               </AnimatePresence>
