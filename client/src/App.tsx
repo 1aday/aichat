@@ -3,7 +3,7 @@ import Home from "@/pages/Home";
 import ToolConfig from "@/pages/ToolConfig";
 import Chat from "@/pages/Chat";
 import { Card, CardContent } from "@/components/ui/card";
-import { AlertCircle, Home as HomeIcon, Plus, MessageSquare } from "lucide-react";
+import { AlertCircle, Wrench, MessageSquare } from "lucide-react";
 import { Link, useLocation } from "wouter";
 
 function App() {
@@ -24,16 +24,8 @@ function App() {
                 <a className={`flex items-center space-x-1 px-3 py-2 rounded-md ${
                   location === "/" ? "bg-[#e9dff0]" : "hover:bg-gray-100"
                 }`}>
-                  <HomeIcon className="h-4 w-4" />
-                  <span>Home</span>
-                </a>
-              </Link>
-              <Link href="/tools/new">
-                <a className={`flex items-center space-x-1 px-3 py-2 rounded-md ${
-                  location === "/tools/new" ? "bg-[#e9dff0]" : "hover:bg-gray-100"
-                }`}>
-                  <Plus className="h-4 w-4" />
-                  <span>Add Tool</span>
+                  <Wrench className="h-4 w-4" />
+                  <span>Tools</span>
                 </a>
               </Link>
               <Link href="/chat">
