@@ -133,16 +133,20 @@ export default function Chat() {
 
   // Helper to determine if a message should be displayed
   function shouldDisplayMessage(message: Message, index: number): boolean {
-    // Always show user messages
-    if (message.role === "user") return true;
+    // Always show user messages with actual content
+    if (message.role === "user" && typeof message.content === "string") {
+      return true;
+    }
 
-    // For assistant messages, check if the next message is a tool result
-    const nextMessage = messages[index + 1];
-    if (!nextMessage) return true;
+    // For assistant messages, always show them
+    if (message.role === "assistant") {
+      return true;
+    }
 
     // Don't show tool result messages independently
-    if (Array.isArray(nextMessage.content) && 
-        nextMessage.content[0]?.type === 'tool_result') {
+    if (message.role === "user" && 
+        Array.isArray(message.content) && 
+        message.content[0]?.type === 'tool_result') {
       return false;
     }
 
