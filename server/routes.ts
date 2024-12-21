@@ -20,6 +20,8 @@ async function executeToolWithClaude(toolDef: ToolDefinition, input: any): Promi
         if (!input?.query) {
           throw new Error('Query is required for BigQuery tool');
         }
+        console.log('Executing BigQuery tool with input:', input);
+        console.log('Raw query from Claude:', input.query);
         return await executeBigQueryQuery(input.query);
       default:
         throw new Error(`Unknown tool: ${toolDef.name}`);
@@ -95,6 +97,8 @@ export function registerRoutes(app: Express) {
         messages = [{ role: "user", content: req.body.message }];
       }
 
+      console.log('Sending request to Claude with tools:', JSON.stringify(toolDefinitions, null, 2));
+
       const response = await anthropic.messages.create({
         model: "claude-3-5-sonnet-20241022",
         max_tokens: 1024,
@@ -102,17 +106,22 @@ export function registerRoutes(app: Express) {
         tools: toolDefinitions
       });
 
+      console.log('Claude response:', JSON.stringify(response, null, 2));
+
       // Handle tool calls
       if (response.stop_reason === 'tool_use') {
         // Get the tool use request from the last content block
         const toolUseBlock = response.content[response.content.length - 1];
+        console.log('Tool use block from Claude:', JSON.stringify(toolUseBlock, null, 2));
 
         if (toolUseBlock.type === 'tool_use') {
           // Find the corresponding tool
           const tool = availableTools.find(t => t.name === toolUseBlock.name);
+          console.log('Found matching tool:', tool?.name);
 
           if (tool) {
             try {
+              console.log('Executing tool with input:', toolUseBlock.input);
               // Execute the tool
               const result = await executeToolWithClaude(
                 {
@@ -137,7 +146,7 @@ export function registerRoutes(app: Express) {
                 ...messages,
                 { role: "assistant", content: response.content },
                 {
-                  role: "user", 
+                  role: "user",
                   content: [
                     {
                       type: "tool_result",

@@ -31,22 +31,31 @@ export interface BigQueryResult {
 
 export async function executeBigQueryQuery(query: string): Promise<BigQueryResult> {
   try {
-    console.log('Executing BigQuery query:', query);
+    // Log the exact query we received
+    console.log('Raw BigQuery query received:', query);
 
     // Run the query
+    console.log('Creating BigQuery job with config:', {
+      query,
+      location: 'EU',
+      maximumBytesBilled: '1000000000'
+    });
+
     const [job] = await bigquery.createQueryJob({
       query,
-      location: 'EU', // Changed from US to EU
+      location: 'EU',
       maximumBytesBilled: '1000000000', // 1GB limit for safety
     });
 
-    console.log('Query job created, waiting for results...');
+    console.log('Query job created with ID:', job.id);
+    console.log('Job full metadata:', await job.getMetadata());
 
     // Wait for query to complete and fetch results
     const [rows] = await job.getQueryResults();
     const [metadata] = await job.getMetadata();
 
     console.log('Query completed successfully');
+    console.log('Number of rows returned:', rows.length);
 
     // Get schema information
     const schema = {
@@ -63,6 +72,10 @@ export async function executeBigQueryQuery(query: string): Promise<BigQueryResul
     };
   } catch (error: any) {
     console.error('BigQuery Error:', error);
-    throw new Error(`BigQuery Error: ${error.message}`);
+    // Log the full error details
+    if (error.response) {
+      console.error('Error response:', error.response);
+    }
+    throw error;
   }
 }
