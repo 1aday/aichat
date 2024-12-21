@@ -25,7 +25,7 @@ async function executeToolWithOpenAI(toolDef: { name: string; description: strin
   }
 }
 
-export function registerRoutes(app: Express) {
+export function registerRoutes(app: Express): Server {
   const httpServer = createServer(app);
 
   // Setup default tools endpoint
@@ -101,7 +101,12 @@ export function registerRoutes(app: Express) {
                 function: {
                   name: tool.name,
                   description: tool.description,
-                  parameters: tool.inputSchema
+                  parameters: {
+                    type: "object",
+                    properties: tool.inputSchema.properties,
+                    required: tool.inputSchema.required || [],
+                    additionalProperties: false
+                  }
                 }
               },
               JSON.parse(toolCalls[0].function.arguments)

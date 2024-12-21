@@ -20,11 +20,12 @@ export async function sendChatMessage(messages: any[], tools: Tool[]): Promise<O
         description: tool.description,
         parameters: {
           type: "object",
-          properties: tool.inputSchema.properties,
+          properties: tool.inputSchema.properties || {},
           required: tool.inputSchema.required || [],
           additionalProperties: false
         }
-      }
+      },
+      strict: true
     }));
 
     // Make OpenAI API call
