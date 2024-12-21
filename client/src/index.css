@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -14,6 +14,21 @@
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
 
+  /* Enhanced Typography */
+  h1 {
+    @apply text-4xl font-semibold tracking-tight leading-[1.1] text-gray-900 dark:text-gray-100;
+    letter-spacing: -0.02em;
+  }
+
+  h2 {
+    @apply text-2xl font-semibold tracking-tight leading-[1.2] text-gray-800 dark:text-gray-200;
+    letter-spacing: -0.01em;
+  }
+
+  p {
+    @apply leading-relaxed text-gray-600 dark:text-gray-400;
+  }
+
   /* Modern scrollbar styling */
   ::-webkit-scrollbar {
     width: 8px;
@@ -25,65 +40,75 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-gray-300 dark:bg-gray-700 rounded-full;
+    @apply bg-gray-200 dark:bg-gray-800 rounded-full transition-colors;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-gray-400 dark:bg-gray-600;
+    @apply bg-gray-300 dark:bg-gray-700;
   }
 
-  /* Enhanced focus styles */
+  /* Enhanced focus states */
   :focus-visible {
-    @apply outline-none ring-2 ring-[#8445ff] ring-offset-2 ring-offset-white dark:ring-offset-gray-900;
+    @apply outline-none ring-2 ring-primary/50 ring-offset-2 ring-offset-white dark:ring-offset-gray-950;
   }
 
-  /* Smooth transitions for dark mode */
+  /* Smooth transitions */
   * {
-    @apply transition-colors duration-200;
+    @apply transition-all duration-200;
   }
 
-  /* Message bubble styles */
-  .message-bubble {
-    @apply shadow-sm;
-  }
-
-  /* Input field enhancements */
+  /* Enhanced input styling */
   input[type="text"],
   input[type="email"],
   input[type="password"] {
-    @apply bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 
-           focus:ring-2 focus:ring-[#8445ff] focus:border-transparent
-           rounded-xl transition-shadow;
+    @apply bg-white dark:bg-gray-900 
+           border border-gray-200 dark:border-gray-800 
+           focus:ring-2 focus:ring-primary/30 focus:border-primary/50
+           rounded-xl transition-all duration-200
+           placeholder:text-gray-400 dark:placeholder:text-gray-600;
   }
 
-  /* Button hover effects */
+  /* Button refinements */
   button {
-    @apply transform transition-transform duration-200 active:scale-95;
+    @apply transform transition-all duration-200 active:scale-[0.98]
+           focus:ring-2 focus:ring-primary/30 focus:ring-offset-2
+           disabled:opacity-60 disabled:cursor-not-allowed
+           font-medium tracking-tight;
   }
 
-  /* Code block styling */
-  pre {
-    @apply font-mono text-sm bg-gray-100 dark:bg-gray-800 p-4 rounded-lg 
-           overflow-x-auto;
+  /* Card enhancements */
+  .card {
+    @apply bg-white dark:bg-gray-900 
+           border border-gray-200/50 dark:border-gray-800/50
+           backdrop-blur-sm
+           shadow-sm hover:shadow-md
+           transition-all duration-300;
   }
 
-  /* Typography refinements */
-  h1, h2, h3, h4, h5, h6 {
-    @apply font-semibold tracking-tight;
-  }
-
-  p {
-    @apply leading-relaxed;
-  }
-
-  /* Message container backdrop */
+  /* Message container refinements */
   .messages-container {
-    @apply backdrop-blur-sm bg-white/30 dark:bg-gray-900/30;
+    @apply backdrop-blur-[20px] bg-white/60 dark:bg-gray-950/60
+           border border-gray-200/20 dark:border-gray-800/20;
   }
 
-  /* Enhanced input container */
+  /* Input container polish */
   .input-container {
-    @apply backdrop-blur-md bg-white/50 dark:bg-gray-900/50 
-           shadow-lg border-t border-gray-200/50 dark:border-gray-800/50;
+    @apply backdrop-blur-2xl bg-white/80 dark:bg-gray-900/80 
+           border-t border-gray-200/30 dark:border-gray-800/30
+           shadow-lg;
+  }
+
+  /* Enhanced chat bubbles */
+  .chat-bubble-user {
+    @apply bg-primary text-white
+           shadow-lg shadow-primary/20
+           rounded-2xl rounded-tr-sm;
+  }
+
+  .chat-bubble-assistant {
+    @apply bg-white dark:bg-gray-900
+           shadow-sm hover:shadow-md
+           rounded-2xl rounded-tl-sm
+           transition-shadow duration-200;
   }
 }

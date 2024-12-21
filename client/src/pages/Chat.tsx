@@ -348,12 +348,12 @@ export default function Chat() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white dark:from-gray-950 dark:to-gray-900">
-      <div className="max-w-7xl mx-auto pt-4 pb-16 px-6">
-        <div className="relative h-[calc(100vh-5rem)]">
-          <div className="absolute inset-0 flex flex-col">
+    <div className="min-h-screen bg-[#fafafa] dark:bg-gray-950">
+      <div className="max-w-[1200px] mx-auto pt-6 pb-16 px-6">
+        <div className="relative h-[calc(100vh-8rem)]">
+          <div className="absolute inset-0 flex flex-col rounded-2xl overflow-hidden border border-gray-200/50 dark:border-gray-800/50 shadow-2xl">
             {/* Messages Container */}
-            <div className="flex-1 overflow-y-auto space-y-4 scroll-smooth px-4 messages-container rounded-2xl">
+            <div className="flex-1 overflow-y-auto space-y-6 p-6 messages-container">
               <AnimatePresence initial={false}>
                 {messages.map((message, i) => (
                   message.role !== "tool" && (
@@ -362,33 +362,42 @@ export default function Chat() {
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -20 }}
-                      transition={{ duration: 0.3 }}
+                      transition={{ 
+                        duration: 0.4,
+                        ease: [0.23, 1, 0.32, 1] // Apple-style spring easing
+                      }}
                       className={`flex ${message.role === "assistant" ? "justify-start" : "justify-end"}`}
                     >
-                      <div className={`max-w-[90%] rounded-2xl px-6 py-4 shadow-sm ${
-                        message.role === "assistant"
-                          ? "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 prose-pre:bg-gray-900 prose-pre:text-gray-100"
-                          : "bg-[#8445ff] text-white prose-headings:text-white prose-p:text-white prose-strong:text-white"
-                      }`}>
+                      <div 
+                        className={`max-w-[85%] px-6 py-4 ${
+                          message.role === "assistant"
+                            ? "chat-bubble-assistant"
+                            : "chat-bubble-user"
+                        }`}
+                      >
                         {renderMessage(message)}
                       </div>
                     </motion.div>
                   )
                 ))}
               </AnimatePresence>
-              {/* Loading and Processing States */}
+
+              {/* Loading States */}
               {(isWaitingForResponse || isProcessingTools) && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.2 }}
+                  transition={{ 
+                    duration: 0.3,
+                    ease: [0.23, 1, 0.32, 1]
+                  }}
                   className="flex justify-start"
                 >
-                  <div className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 max-w-[85%] rounded-2xl px-4 py-3 shadow-sm">
-                    <div className="flex items-center space-x-2">
-                      <Loader2 className="h-4 w-4 animate-spin text-[#8445ff]" />
-                      <span className="text-sm font-medium">
-                        {isProcessingTools ? "Executing tools..." : "Waiting for response..."}
+                  <div className="chat-bubble-assistant max-w-[85%] px-6 py-4">
+                    <div className="flex items-center space-x-3">
+                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {isProcessingTools ? "Running tools..." : "Thinking..."}
                       </span>
                     </div>
                   </div>
@@ -398,19 +407,26 @@ export default function Chat() {
             </div>
 
             {/* Input Form */}
-            <div className="sticky bottom-0 py-4 input-container rounded-b-2xl">
-              <form onSubmit={sendMessage} className="flex gap-2 items-center px-4">
+            <div className="sticky bottom-0 p-6 input-container">
+              <form onSubmit={sendMessage} className="flex gap-3 items-center">
                 <Input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Type your message..."
+                  placeholder="Message Claude..."
                   disabled={isWaitingForResponse || isProcessingTools}
-                  className="flex-1 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-[#8445ff] focus:border-transparent transition-shadow"
+                  className="flex-1 h-12 text-base bg-white/50 dark:bg-gray-900/50 
+                            border-gray-200/50 dark:border-gray-800/50 
+                            backdrop-blur-xl rounded-xl 
+                            focus:ring-2 focus:ring-primary/30 focus:border-primary/50 
+                            transition-all duration-200"
                 />
                 <Button
                   type="submit"
                   disabled={isWaitingForResponse || isProcessingTools}
-                  className="bg-[#8445ff] hover:bg-[#6a37cc] rounded-xl px-4 h-[42px] transition-all duration-200 hover:shadow-lg disabled:opacity-50"
+                  className="h-12 px-6 bg-primary hover:bg-primary/90 
+                            rounded-xl shadow-lg shadow-primary/25 
+                            transition-all duration-200 hover:shadow-xl hover:shadow-primary/30
+                            disabled:shadow-none"
                 >
                   <Send className="h-5 w-5" />
                 </Button>
@@ -419,7 +435,7 @@ export default function Chat() {
                 <motion.p
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="mt-2 text-xs text-gray-500 dark:text-gray-400 px-4"
+                  className="mt-3 text-sm text-gray-500 dark:text-gray-400"
                 >
                   Available tools: {tools.map(t => t.name).join(", ")}
                 </motion.p>
