@@ -11,7 +11,6 @@ try {
   throw new Error('Invalid GOOGLE_CREDENTIALS format');
 }
 
-// Initialize BigQuery with explicit credentials
 const bigquery = new BigQuery({
   projectId: process.env.BIGQUERY_PROJECT_ID,
   credentials: credentials,
@@ -19,13 +18,6 @@ const bigquery = new BigQuery({
 
 export interface BigQueryResult {
   rows: Record<string, any>[];
-  totalRows: number;
-  schema?: {
-    fields: Array<{
-      name: string;
-      type: string;
-    }>;
-  };
 }
 
 export async function executeBigQueryQuery(query: string): Promise<BigQueryResult> {
@@ -38,29 +30,10 @@ export async function executeBigQueryQuery(query: string): Promise<BigQueryResul
 
     // Wait for query to complete and fetch results
     const [rows] = await job.getQueryResults();
-    const [metadata] = await job.getMetadata();
 
-    // Try to extract schema information safely
-    let schema;
-    try {
-      if (metadata?.statistics?.query?.schema?.fields) {
-        schema = {
-          fields: metadata.statistics.query.schema.fields.map((field: any) => ({
-            name: field.name,
-            type: field.type,
-          })),
-        };
-      }
-    } catch (schemaError) {
-      console.warn('Could not extract schema information:', schemaError);
-      // Continue without schema information
-    }
-
-    // Return results with optional schema
+    // Return just the rows
     return {
-      rows: rows || [],
-      totalRows: rows?.length || 0,
-      ...(schema && { schema }),
+      rows: rows || []
     };
   } catch (error: any) {
     console.error('BigQuery Error:', error);
