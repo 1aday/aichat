@@ -151,11 +151,16 @@ export default function ChatHome() {
 
     const userMessage = input.trim();
     setInput("");
+    const inputRef = e.target as HTMLFormElement;
+    const inputElement = inputRef.querySelector('input');
 
     // Add user message immediately
     const newUserMessage: Message = { role: "user", content: userMessage };
     setMessages(prev => [...prev, newUserMessage]);
     setIsWaitingForResponse(true);
+
+    // Maintain focus on input
+    setTimeout(() => inputElement?.focus(), 0);
 
     try {
       const response = await fetch("/api/chat", {
@@ -241,6 +246,8 @@ export default function ChatHome() {
     } finally {
       setIsWaitingForResponse(false);
       setIsProcessingTools(false);
+      // Maintain focus after error handling
+      setTimeout(() => inputElement?.focus(), 0);
     }
   }
 
@@ -319,7 +326,7 @@ export default function ChatHome() {
   function renderMessage(message: Message) {
     return (
       <>
-        <div className="leading-relaxed">
+        <div className={`leading-relaxed ${message.role === "user" ? "text-white" : ""}`}>
           <MarkdownRenderer content={message.content} />
         </div>
 
@@ -371,17 +378,17 @@ export default function ChatHome() {
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -20 }}
-                        transition={{ 
+                        transition={{
                           duration: 0.4,
                           ease: [0.23, 1, 0.32, 1]
                         }}
                         className={`flex ${message.role === "assistant" ? "justify-start" : "justify-end"}`}
                       >
-                        <div 
+                        <div
                           className={`max-w-[85%] px-6 py-4 ${
                             message.role === "assistant"
                               ? "chat-bubble-assistant"
-                              : "chat-bubble-user"
+                              : "chat-bubble-user prose prose-invert"
                           }`}
                         >
                           {renderMessage(message)}
@@ -397,7 +404,7 @@ export default function ChatHome() {
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ 
+                  transition={{
                     duration: 0.3,
                     ease: [0.23, 1, 0.32, 1]
                   }}
@@ -429,6 +436,7 @@ export default function ChatHome() {
                             backdrop-blur-xl rounded-xl 
                             focus:ring-2 focus:ring-primary/30 focus:border-primary/50 
                             transition-all duration-200"
+                  autoFocus
                 />
                 <Button
                   type="submit"
