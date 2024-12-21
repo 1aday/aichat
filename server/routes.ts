@@ -132,17 +132,19 @@ export function registerRoutes(app: Express) {
                 output: result,
               });
 
-              // Add tool result to conversation
+              // Create final message array with tool result integrated into assistant's response
               const updatedMessages = [
                 ...messages,
-                { role: "assistant", content: response.content },
-                {
-                  role: "user",
-                  content: [{
-                    type: "tool_result",
-                    tool_use_id: toolUseBlock.id,
-                    content: JSON.stringify(result)
-                  }]
+                { 
+                  role: "assistant",
+                  content: [
+                    ...response.content,
+                    {
+                      type: "tool_result",
+                      tool_use_id: toolUseBlock.id,
+                      content: JSON.stringify(result)
+                    }
+                  ]
                 }
               ];
 
@@ -154,18 +156,28 @@ export function registerRoutes(app: Express) {
                 tools: toolDefinitions
               });
 
+              // Return the complete conversation with tool results integrated
               res.json({
-                response: finalResponse.content[0].text,
-                messages: [...updatedMessages, {
-                  role: "assistant",
-                  content: finalResponse.content
-                }]
+                messages: [
+                  ...messages,
+                  {
+                    role: "assistant",
+                    content: [
+                      ...response.content,
+                      {
+                        type: "tool_result",
+                        tool_use_id: toolUseBlock.id,
+                        content: JSON.stringify(result)
+                      },
+                      ...finalResponse.content
+                    ]
+                  }
+                ]
               });
               return;
             } catch (error: any) {
               console.error('Tool execution error:', error);
-              // Pass the actual error message to the client
-              if (error.errors && error.errors[0]) {
+              if (error.errors?.[0]) {
                 res.status(500).json({ error: error.errors[0].message });
               } else {
                 res.status(500).json({ error: error.message || 'Unknown error occurred' });
@@ -177,17 +189,14 @@ export function registerRoutes(app: Express) {
       }
 
       // For regular responses without tool use
-      const responseMessages = [
-        ...messages,
-        {
-          role: "assistant",
-          content: response.content
-        }
-      ];
-
       res.json({
-        response: response.content[0].text,
-        messages: responseMessages
+        messages: [
+          ...messages,
+          {
+            role: "assistant",
+            content: response.content
+          }
+        ]
       });
 
     } catch (error: any) {
