@@ -15,7 +15,7 @@ try {
 const bigquery = new BigQuery({
   projectId: process.env.BIGQUERY_PROJECT_ID,
   credentials: credentials,
-  location: 'EU', // Changed from US to EU as many datasets are in EU
+  location: 'US', // Using US location as the dataset is in US
 });
 
 export interface BigQueryResult {
@@ -37,13 +37,13 @@ export async function executeBigQueryQuery(query: string): Promise<BigQueryResul
     // Run the query
     console.log('Creating BigQuery job with config:', {
       query,
-      location: 'EU',
+      location: 'US',
       maximumBytesBilled: '1000000000'
     });
 
     const [job] = await bigquery.createQueryJob({
       query,
-      location: 'EU',
+      location: 'US',
       maximumBytesBilled: '1000000000', // 1GB limit for safety
     });
 

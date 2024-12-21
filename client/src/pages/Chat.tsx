@@ -43,7 +43,8 @@ export default function Chat() {
       });
 
       if (!response.ok) {
-        throw new Error(await response.text());
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to send message');
       }
 
       const data = await response.json();
@@ -55,11 +56,11 @@ export default function Chat() {
         // Fallback for simple responses
         setMessages(prev => [...prev, { role: "assistant", content: data.response }]);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Chat error:", error);
       setMessages(prev => [...prev, { 
         role: "assistant", 
-        content: "Sorry, I encountered an error processing your request." 
+        content: `Error: ${error.message || 'An unexpected error occurred. Please try again.'}` 
       }]);
     } finally {
       setIsLoading(false);

@@ -45,7 +45,7 @@ export function registerRoutes(app: Express) {
         // Create BigQuery tool if it doesn't exist
         const [tool] = await db.insert(tools).values({
           name: "bigquery",
-          description: "Execute BigQuery SQL queries to analyze data. Use this tool when you need to query data from BigQuery tables.",
+          description: "Execute BigQuery SQL queries to analyze data. Use this tool when you need to query data from BigQuery tables. The dataset location is in US region.",
           type: "client" as ToolType,
           config: {},
           inputSchema: {
@@ -53,7 +53,7 @@ export function registerRoutes(app: Express) {
             properties: {
               query: {
                 type: "string",
-                description: "The SQL query to execute on BigQuery"
+                description: "The SQL query to execute on BigQuery. The dataset is located in US region."
               }
             },
             required: ["query"]
@@ -127,7 +127,7 @@ export function registerRoutes(app: Express) {
                 {
                   name: tool.name,
                   description: tool.description,
-                  type: tool.type as ToolType,
+                  type: tool.type,
                   config: tool.config,
                   input_schema: tool.inputSchema
                 },
@@ -147,13 +147,11 @@ export function registerRoutes(app: Express) {
                 { role: "assistant", content: response.content },
                 {
                   role: "user",
-                  content: [
-                    {
-                      type: "tool_result",
-                      tool_call_id: toolUseBlock.id,
-                      content: JSON.stringify(result)
-                    }
-                  ]
+                  content: [{
+                    type: "tool_result",
+                    tool_call_id: toolUseBlock.id,
+                    content: JSON.stringify(result)
+                  }]
                 }
               ];
 
@@ -162,17 +160,14 @@ export function registerRoutes(app: Express) {
                 model: "claude-3-5-sonnet-20241022",
                 max_tokens: 1024,
                 messages: updatedMessages,
-                tools: toolDefinitions,
+                tools: toolDefinitions
               });
 
               res.json({
                 response: finalResponse.content[0].text,
                 messages: [...updatedMessages, {
                   role: "assistant",
-                  content: [{
-                    type: "text",
-                    text: finalResponse.content[0].text
-                  }]
+                  content: finalResponse.content
                 }]
               });
               return;
@@ -190,10 +185,7 @@ export function registerRoutes(app: Express) {
         ...messages,
         {
           role: "assistant",
-          content: [{
-            type: "text",
-            text: response.content[0].text
-          }]
+          content: response.content
         }
       ];
 
