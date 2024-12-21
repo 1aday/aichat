@@ -8,6 +8,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { listTools } from "@/lib/api";
 import { Send, Loader2, ChevronRight, Check, Terminal } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -67,13 +68,13 @@ export default function Chat() {
       // Update status to executing
       console.log('Setting tool status to executing');
       setMessages(prev => {
-        const updatedMessages = prev.map((msg, idx) => 
+        const updatedMessages = prev.map((msg, idx) =>
           idx === messageIndex && msg.tool_calls
             ? {
                 ...msg,
                 tool_calls: msg.tool_calls.map(tc =>
-                  tc.id === toolCall.id 
-                    ? { ...tc, status: "executing" } 
+                  tc.id === toolCall.id
+                    ? { ...tc, status: "executing" }
                     : tc
                 )
               }
@@ -103,8 +104,8 @@ export default function Chat() {
             ? {
                 ...msg,
                 tool_calls: msg.tool_calls.map(tc =>
-                  tc.id === toolCall.id 
-                    ? { ...tc, status: "completed" } 
+                  tc.id === toolCall.id
+                    ? { ...tc, status: "completed" }
                     : tc
                 )
               }
@@ -133,8 +134,8 @@ export default function Chat() {
           ? {
               ...msg,
               tool_calls: msg.tool_calls.map(tc =>
-                tc.id === toolCall.id 
-                  ? { ...tc, status: "failed" } 
+                tc.id === toolCall.id
+                  ? { ...tc, status: "failed" }
                   : tc
               )
             }
@@ -162,7 +163,7 @@ export default function Chat() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           messages: [...messages, newUserMessage]
         }),
       });
@@ -244,9 +245,9 @@ export default function Chat() {
       }
     } catch (error: any) {
       console.error("Chat error:", error);
-      setMessages(prev => [...prev, { 
-        role: "assistant", 
-        content: `Error: ${error.message || 'An unexpected error occurred'}` 
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: `Error: ${error.message || 'An unexpected error occurred'}`
       }]);
     } finally {
       setIsWaitingForResponse(false);
@@ -283,9 +284,9 @@ export default function Chat() {
         {/* Tool Execution Step */}
         <div className="relative flex items-start gap-3">
           <div className={`relative z-10 flex h-6 w-6 items-center justify-center rounded-full ${
-            toolCall.status === "completed" ? "bg-green-500" : 
-            toolCall.status === "failed" ? "bg-red-500" : 
-            "bg-primary"
+            toolCall.status === "completed" ? "bg-green-500" :
+              toolCall.status === "failed" ? "bg-red-500" :
+                "bg-primary"
           } shadow-sm`}>
             {toolCall.status === "completed" ? (
               <Check className="h-3 w-3 text-white" />
@@ -331,8 +332,10 @@ export default function Chat() {
     console.log('Rendering message:', message);
     return (
       <>
-        {/* Render message content */}
-        <p className="leading-relaxed whitespace-pre-wrap mb-2">{message.content}</p>
+        {/* Render message content with markdown support */}
+        <div className="leading-relaxed">
+          <MarkdownRenderer content={message.content} />
+        </div>
 
         {/* Render tool calls progress if present */}
         {message.tool_calls?.map((toolCall) => (
@@ -364,8 +367,8 @@ export default function Chat() {
                     >
                       <div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${
                         message.role === "assistant"
-                          ? "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                          : "bg-[#8445ff] text-white"
+                          ? "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 prose-pre:bg-gray-900 prose-pre:text-gray-100"
+                          : "bg-[#8445ff] text-white prose-headings:text-white prose-p:text-white prose-strong:text-white"
                       }`}>
                         {renderMessage(message)}
                       </div>
@@ -376,7 +379,7 @@ export default function Chat() {
 
               {/* Loading and Processing States */}
               {(isWaitingForResponse || isProcessingTools) && (
-                <motion.div 
+                <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.2 }}
@@ -405,8 +408,8 @@ export default function Chat() {
                   disabled={isWaitingForResponse || isProcessingTools}
                   className="flex-1 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-[#8445ff] focus:border-transparent transition-shadow"
                 />
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   disabled={isWaitingForResponse || isProcessingTools}
                   className="bg-[#8445ff] hover:bg-[#6a37cc] rounded-xl px-4 h-[42px] transition-all duration-200 hover:shadow-lg disabled:opacity-50"
                 >
@@ -414,7 +417,7 @@ export default function Chat() {
                 </Button>
               </form>
               {tools.length > 0 && (
-                <motion.p 
+                <motion.p
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   className="mt-2 text-xs text-gray-500 dark:text-gray-400 px-4"
