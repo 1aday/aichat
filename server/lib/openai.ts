@@ -39,38 +39,27 @@ export async function sendChatMessage(messages: any[], tools: Tool[]): Promise<O
 
     const reply = response.choices[0].message;
 
-    // If there are tool calls, format them for the frontend
+    // Format the message based on whether it's a tool call or regular message
     if (reply.tool_calls) {
-      const formattedContent = [
-        { type: "text", text: reply.content || "" }
-      ];
-
-      // Add tool call information
-      reply.tool_calls.forEach((toolCall: any) => {
-        formattedContent.push({
-          type: "tool_call",
-          tool: toolCall.function.name,
-          input: JSON.parse(toolCall.function.arguments)
-        });
-      });
+      // Only include the text content in the content array
+      const assistantMessage = {
+        role: "assistant",
+        content: reply.content || "",
+        tool_calls: reply.tool_calls
+      };
 
       return {
-        messages: [...messages, {
-          role: "assistant",
-          content: formattedContent,
-          tool_calls: reply.tool_calls
-        }]
+        messages: [...messages, assistantMessage]
       };
     }
 
-    // For regular messages, just return the content
+    // For regular messages without tool calls
     return {
       messages: [...messages, {
         role: "assistant",
         content: reply.content
       }]
     };
-
   } catch (error: any) {
     console.error('OpenAI Error:', error);
     throw error;

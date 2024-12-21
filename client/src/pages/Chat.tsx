@@ -14,7 +14,8 @@ import { motion, AnimatePresence } from "framer-motion";
 
 interface Message {
   role: "user" | "assistant";
-  content: string | any[];
+  content: string;
+  tool_calls?: any[];
 }
 
 export default function Chat() {
@@ -74,124 +75,46 @@ export default function Chat() {
     }
   }
 
-function renderMessageContent(content: string | any[]) {
-  if (typeof content === 'string') {
-    return <p className="leading-relaxed whitespace-pre-wrap">{content}</p>;
-  }
+  function renderMessage(message: Message) {
+    return (
+      <>
+        {/* Render the main message content */}
+        <p className="leading-relaxed whitespace-pre-wrap mb-2">{message.content}</p>
 
-  if (!Array.isArray(content)) {
-    return <p className="leading-relaxed whitespace-pre-wrap">{String(content)}</p>;
-  }
-
-  // Group tool use and tool result blocks together
-  const blocks: JSX.Element[] = [];
-  let currentText = '';
-
-  content.forEach((block: any, index: number) => {
-    if (block.type === 'text') {
-      currentText += block.text + '\n';
-    } else if (block.type === 'tool_call') {
-      // If we have accumulated text, add it before the tool block
-      if (currentText) {
-        blocks.push(
-          <p key={`text-${index}`} className="leading-relaxed whitespace-pre-wrap mb-2">
-            {currentText.trim()}
-          </p>
-        );
-        currentText = '';
-      }
-
-      // Find the corresponding tool result (if any)
-      const nextBlock = content[index + 1];
-      const hasToolResult = nextBlock && nextBlock.type === 'tool_result';
-
-      blocks.push(
-        <div key={`tool-${index}`} className="text-sm mt-2">
-          <div className="flex flex-col gap-2">
-            {/* Tool Usage Progress Steps */}
-            <div className="flex flex-col gap-1.5 bg-black/5 dark:bg-white/5 rounded-lg p-3">
-              <div className="flex items-center gap-2 text-xs">
-                <Check className="h-3.5 w-3.5 text-green-500" />
-                <span className="text-gray-600 dark:text-gray-300">Called tool: {block.tool}</span>
-              </div>
-              <div className="flex items-center gap-2 text-xs">
-                {hasToolResult ? (
+        {/* Render tool calls if present */}
+        {message.tool_calls?.map((toolCall, index) => (
+          <div key={`tool-${index}`} className="text-sm mt-2">
+            <div className="flex flex-col gap-2">
+              {/* Tool Usage Progress Steps */}
+              <div className="flex flex-col gap-1.5 bg-black/5 dark:bg-white/5 rounded-lg p-3">
+                <div className="flex items-center gap-2 text-xs">
                   <Check className="h-3.5 w-3.5 text-green-500" />
-                ) : (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-[#8445ff]" />
-                )}
-                <span className="text-gray-600 dark:text-gray-300">
-                  {hasToolResult ? "Received response" : "Waiting for response..."}
-                </span>
-              </div>
-            </div>
-
-            {/* Collapsible Tool Details */}
-            <Collapsible>
-              <CollapsibleTrigger className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
-                <ChevronRight className="h-3 w-3" />
-                View details
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 mt-2">
-                  <p className="text-xs text-gray-500 mb-2">Input:</p>
-                  <pre className="font-mono text-gray-800 dark:text-gray-200 overflow-x-auto">
-                    {JSON.stringify(block.input, null, 2)}
-                  </pre>
-                  {hasToolResult && (
-                    <>
-                      <p className="text-xs text-gray-500 mt-3 mb-2">Tool result:</p>
-                      <pre className="font-mono text-gray-800 dark:text-gray-200 overflow-x-auto">
-                        {JSON.stringify(nextBlock.result, null, 2)}
-                      </pre>
-                    </>
-                  )}
+                  <span className="text-gray-600 dark:text-gray-300">
+                    Called tool: {toolCall.function.name}
+                  </span>
                 </div>
-              </CollapsibleContent>
-            </Collapsible>
+              </div>
+
+              {/* Collapsible Tool Details */}
+              <Collapsible>
+                <CollapsibleTrigger className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
+                  <ChevronRight className="h-3 w-3" />
+                  View details
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 mt-2">
+                    <p className="text-xs text-gray-500 mb-2">Input:</p>
+                    <pre className="font-mono text-gray-800 dark:text-gray-200 overflow-x-auto">
+                      {toolCall.function.arguments}
+                    </pre>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            </div>
           </div>
-        </div>
-      );
-
-      // Skip the next block if it was a tool result we just handled
-      if (hasToolResult) {
-        index++;
-      }
-    }
-  });
-
-  // Add any remaining text
-  if (currentText) {
-    blocks.push(
-      <p key="remaining-text" className="leading-relaxed whitespace-pre-wrap">
-        {currentText.trim()}
-      </p>
+        ))}
+      </>
     );
-  }
-
-  return blocks;
-}
-
-  // Helper to determine if a message should be displayed
-  function shouldDisplayMessage(message: Message, index: number): boolean {
-    // Always show user messages with actual content
-    if (message.role === "user" && typeof message.content === "string") {
-      return true;
-    }
-
-    // For assistant messages, always show them
-    if (message.role === "assistant") {
-      return true;
-    }
-
-    // Don't show tool result messages independently
-    if (message.role === "user" && 
-        Array.isArray(message.content) && 
-        message.content[0]?.type === 'tool_result') {
-      return false;
-    }
-
-    return true;
   }
 
   return (
@@ -202,7 +125,7 @@ function renderMessageContent(content: string | any[]) {
             {/* Messages Container with backdrop blur */}
             <div className="flex-1 overflow-y-auto space-y-4 scroll-smooth px-2 messages-container rounded-2xl">
               <AnimatePresence initial={false}>
-                {messages.map((message, i) => shouldDisplayMessage(message, i) && (
+                {messages.map((message, i) => (
                   <motion.div
                     key={i}
                     initial={{ opacity: 0, y: 20 }}
@@ -216,7 +139,7 @@ function renderMessageContent(content: string | any[]) {
                         ? "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                         : "bg-[#8445ff] text-white"
                     }`}>
-                      {renderMessageContent(message.content)}
+                      {renderMessage(message)}
                     </div>
                   </motion.div>
                 ))}
@@ -239,7 +162,7 @@ function renderMessageContent(content: string | any[]) {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Input Form with enhanced styling */}
+            {/* Input Form */}
             <div className="sticky bottom-0 py-4 input-container rounded-b-2xl">
               <form onSubmit={sendMessage} className="flex gap-2 items-center px-4">
                 <Input
