@@ -44,7 +44,7 @@
 
   /* Message bubble styles */
   .message-bubble {
-    @apply shadow-sm hover:shadow-md transition-shadow duration-200;
+    @apply shadow-sm;
   }
 
   /* Input field enhancements */
@@ -63,7 +63,7 @@
 
   /* Code block styling */
   pre {
-    @apply font-mono text-sm bg-black/5 dark:bg-white/5 p-4 rounded-lg 
+    @apply font-mono text-sm bg-gray-100 dark:bg-gray-800 p-4 rounded-lg 
            overflow-x-auto;
   }
 

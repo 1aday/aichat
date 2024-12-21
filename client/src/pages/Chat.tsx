@@ -80,14 +80,17 @@ export default function Chat() {
     }
 
     return content.map((block: any, index: number) => {
+      // For text blocks
       if (block.type === 'text') {
         return <p key={index} className="leading-relaxed whitespace-pre-wrap">{block.text}</p>;
       }
+
+      // For tool use blocks
       if (block.type === 'tool_use') {
         return (
-          <div key={index} className="text-sm space-y-1">
-            <p className="text-xs text-gray-500">Using tool: {block.name}</p>
+          <div key={index} className="text-sm mt-2">
             <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3">
+              <p className="text-xs text-gray-500 mb-2">Using tool: {block.name}</p>
               <pre className="font-mono text-gray-800 dark:text-gray-200 overflow-x-auto">
                 {JSON.stringify(block.input, null, 2)}
               </pre>
@@ -95,11 +98,13 @@ export default function Chat() {
           </div>
         );
       }
+
+      // For tool result blocks - always rendered as assistant message
       if (block.type === 'tool_result') {
         return (
-          <div key={index} className="text-sm space-y-1">
-            <p className="text-xs text-gray-500">Tool result:</p>
+          <div key={index} className="text-sm mt-2">
             <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3">
+              <p className="text-xs text-gray-500 mb-2">Tool result:</p>
               <pre className="font-mono text-gray-800 dark:text-gray-200 overflow-x-auto">
                 {block.content}
               </pre>
@@ -128,13 +133,11 @@ export default function Chat() {
                     transition={{ duration: 0.3 }}
                     className={`flex ${message.role === "assistant" ? "justify-start" : "justify-end"}`}
                   >
-                    <div
-                      className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm message-bubble ${
-                        message.role === "assistant"
-                          ? "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                          : "bg-[#8445ff] text-white ml-auto"
-                      }`}
-                    >
+                    <div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${
+                      message.role === "assistant"
+                        ? "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                        : "bg-[#8445ff] text-white"
+                    }`}>
                       {renderMessageContent(message.content)}
                     </div>
                   </motion.div>
