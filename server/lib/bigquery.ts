@@ -1,8 +1,20 @@
 import { BigQuery } from '@google-cloud/bigquery';
 
-// Initialize BigQuery with credentials
+// Initialize BigQuery with credentials from environment
+let credentials;
+try {
+  if (process.env.GOOGLE_CREDENTIALS) {
+    credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+  }
+} catch (error) {
+  console.error('Error parsing GOOGLE_CREDENTIALS:', error);
+  throw new Error('Invalid GOOGLE_CREDENTIALS format');
+}
+
+// Initialize BigQuery with explicit credentials
 const bigquery = new BigQuery({
-  projectId: process.env.BIGQUERY_PROJECT_ID || 'grox-436223'
+  projectId: process.env.BIGQUERY_PROJECT_ID,
+  credentials: credentials,
 });
 
 export interface BigQueryResult {
@@ -18,6 +30,8 @@ export interface BigQueryResult {
 
 export async function executeBigQueryQuery(query: string): Promise<BigQueryResult> {
   try {
+    console.log('Executing BigQuery query:', query);
+
     // Run the query
     const [job] = await bigquery.createQueryJob({
       query,
@@ -25,9 +39,13 @@ export async function executeBigQueryQuery(query: string): Promise<BigQueryResul
       maximumBytesBilled: '1000000000', // 1GB limit for safety
     });
 
+    console.log('Query job created, waiting for results...');
+
     // Wait for query to complete and fetch results
     const [rows] = await job.getQueryResults();
     const [metadata] = await job.getMetadata();
+
+    console.log('Query completed successfully');
 
     // Get schema information
     const schema = {
