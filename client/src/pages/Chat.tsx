@@ -81,15 +81,22 @@ export default function Chat() {
 
     // Group tool use and tool result blocks together
     const blocks: JSX.Element[] = [];
+    let currentText = '';
 
     content.forEach((block: any, index: number) => {
       if (block.type === 'text') {
-        blocks.push(
-          <p key={`text-${index}`} className="leading-relaxed whitespace-pre-wrap">
-            {block.text}
-          </p>
-        );
+        currentText += block.text + '\n';
       } else if (block.type === 'tool_use') {
+        // If we have accumulated text, add it before the tool block
+        if (currentText) {
+          blocks.push(
+            <p key={`text-${index}`} className="leading-relaxed whitespace-pre-wrap mb-2">
+              {currentText.trim()}
+            </p>
+          );
+          currentText = '';
+        }
+
         // Find the corresponding tool result (if any)
         const nextBlock = content[index + 1];
         const hasToolResult = nextBlock && nextBlock.type === 'tool_result';
@@ -148,6 +155,15 @@ export default function Chat() {
         }
       }
     });
+
+    // Add any remaining text
+    if (currentText) {
+      blocks.push(
+        <p key="remaining-text" className="leading-relaxed whitespace-pre-wrap">
+          {currentText.trim()}
+        </p>
+      );
+    }
 
     return blocks;
   }
