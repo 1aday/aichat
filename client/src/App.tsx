@@ -20,21 +20,17 @@ function App() {
               </h1>
             </div>
             <div className="flex items-center space-x-4">
-              <Link href="/">
-                <a className={`flex items-center space-x-1 px-3 py-2 rounded-md ${
-                  location === "/" ? "bg-[#e9dff0]" : "hover:bg-gray-100"
-                }`}>
-                  <Wrench className="h-4 w-4" />
-                  <span>Tools</span>
-                </a>
+              <Link href="/" className={`flex items-center space-x-1 px-3 py-2 rounded-md ${
+                location === "/" ? "bg-[#e9dff0]" : "hover:bg-gray-100"
+              }`}>
+                <Wrench className="h-4 w-4" />
+                <span>Tools</span>
               </Link>
-              <Link href="/chat">
-                <a className={`flex items-center space-x-1 px-3 py-2 rounded-md ${
-                  location === "/chat" ? "bg-[#e9dff0]" : "hover:bg-gray-100"
-                }`}>
-                  <MessageSquare className="h-4 w-4" />
-                  <span>Chat</span>
-                </a>
+              <Link href="/chat" className={`flex items-center space-x-1 px-3 py-2 rounded-md ${
+                location === "/chat" ? "bg-[#e9dff0]" : "hover:bg-gray-100"
+              }`}>
+                <MessageSquare className="h-4 w-4" />
+                <span>Chat</span>
               </Link>
             </div>
           </div>
