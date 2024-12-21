@@ -9,13 +9,14 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { listTools } from "@/lib/api";
-import { Send, Loader2, ChevronRight, Check } from "lucide-react";
+import { Send, Loader2, ChevronRight, Check, Terminal } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface Message {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "tool";
   content: string;
   tool_calls?: any[];
+  tool_call_id?: string;
 }
 
 export default function Chat() {
@@ -75,44 +76,110 @@ export default function Chat() {
     }
   }
 
+  function renderToolProgress(toolCall: any, hasResult: boolean) {
+    return (
+      <div className="relative mt-4 mb-2">
+        {/* Progress Line */}
+        <div className="absolute left-[11px] top-0 h-full w-0.5 bg-gray-200 dark:bg-gray-700" />
+
+        {/* Tool Execution Step */}
+        <div className="relative flex items-start gap-3 pb-8">
+          <div className="relative z-10 flex h-6 w-6 items-center justify-center rounded-full bg-primary shadow-sm">
+            <Terminal className="h-3 w-3 text-white" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+              Executing Tool: {toolCall.function.name}
+            </p>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Sending request to function...
+            </p>
+          </div>
+        </div>
+
+        {/* Result Step */}
+        <div className="relative flex items-start gap-3">
+          <div className={`relative z-10 flex h-6 w-6 items-center justify-center rounded-full ${
+            hasResult 
+              ? 'bg-green-500' 
+              : 'bg-gray-300 dark:bg-gray-600'
+          } shadow-sm`}>
+            {hasResult ? (
+              <Check className="h-3 w-3 text-white" />
+            ) : (
+              <Loader2 className="h-3 w-3 animate-spin text-white" />
+            )}
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+              {hasResult ? 'Tool Execution Complete' : 'Awaiting Response...'}
+            </p>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {hasResult ? 'Processing tool results' : 'Tool is processing your request'}
+            </p>
+          </div>
+        </div>
+
+        {/* Tool Details Collapsible */}
+        <div className="ml-9 mt-4">
+          <Collapsible>
+            <CollapsibleTrigger className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
+              <ChevronRight className="h-3 w-3" />
+              View request details
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="mt-2 rounded-md bg-gray-50 dark:bg-gray-800/50 p-3">
+                <p className="text-xs text-gray-500 mb-1">Function Arguments:</p>
+                <pre className="text-xs font-mono bg-white dark:bg-gray-800 rounded p-2 overflow-x-auto">
+                  {toolCall.function.arguments}
+                </pre>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
+      </div>
+    );
+  }
+
   function renderMessage(message: Message) {
+    // Find matching tool result if this message has tool calls
+    const toolResults = messages.filter(
+      msg => msg.role === "tool" && 
+      message.tool_calls?.some(tc => tc.id === msg.tool_call_id)
+    );
+
     return (
       <>
         {/* Render the main message content */}
         <p className="leading-relaxed whitespace-pre-wrap mb-2">{message.content}</p>
 
         {/* Render tool calls if present */}
-        {message.tool_calls?.map((toolCall, index) => (
-          <div key={`tool-${index}`} className="text-sm mt-2">
-            <div className="flex flex-col gap-2">
-              {/* Tool Usage Progress Steps */}
-              <div className="flex flex-col gap-1.5 bg-black/5 dark:bg-white/5 rounded-lg p-3">
-                <div className="flex items-center gap-2 text-xs">
-                  <Check className="h-3.5 w-3.5 text-green-500" />
-                  <span className="text-gray-600 dark:text-gray-300">
-                    Called tool: {toolCall.function.name}
-                  </span>
+        {message.tool_calls?.map((toolCall, index) => {
+          const hasResult = toolResults.some(tr => tr.tool_call_id === toolCall.id);
+          return (
+            <div key={`tool-${toolCall.id}`}>
+              {renderToolProgress(toolCall, hasResult)}
+              {hasResult && (
+                <div className="ml-9 mt-4">
+                  <Collapsible>
+                    <CollapsibleTrigger className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
+                      <ChevronRight className="h-3 w-3" />
+                      View results
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="mt-2 rounded-md bg-gray-50 dark:bg-gray-800/50 p-3">
+                        <p className="text-xs text-gray-500 mb-1">Tool Response:</p>
+                        <pre className="text-xs font-mono bg-white dark:bg-gray-800 rounded p-2 overflow-x-auto">
+                          {toolResults.find(tr => tr.tool_call_id === toolCall.id)?.content}
+                        </pre>
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
                 </div>
-              </div>
-
-              {/* Collapsible Tool Details */}
-              <Collapsible>
-                <CollapsibleTrigger className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
-                  <ChevronRight className="h-3 w-3" />
-                  View details
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 mt-2">
-                    <p className="text-xs text-gray-500 mb-2">Input:</p>
-                    <pre className="font-mono text-gray-800 dark:text-gray-200 overflow-x-auto">
-                      {toolCall.function.arguments}
-                    </pre>
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </>
     );
   }
@@ -126,22 +193,24 @@ export default function Chat() {
             <div className="flex-1 overflow-y-auto space-y-4 scroll-smooth px-2 messages-container rounded-2xl">
               <AnimatePresence initial={false}>
                 {messages.map((message, i) => (
-                  <motion.div
-                    key={i}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    transition={{ duration: 0.3 }}
-                    className={`flex ${message.role === "assistant" ? "justify-start" : "justify-end"}`}
-                  >
-                    <div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${
-                      message.role === "assistant"
-                        ? "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                        : "bg-[#8445ff] text-white"
-                    }`}>
-                      {renderMessage(message)}
-                    </div>
-                  </motion.div>
+                  message.role !== "tool" && (
+                    <motion.div
+                      key={i}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -20 }}
+                      transition={{ duration: 0.3 }}
+                      className={`flex ${message.role === "assistant" ? "justify-start" : "justify-end"}`}
+                    >
+                      <div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${
+                        message.role === "assistant"
+                          ? "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                          : "bg-[#8445ff] text-white"
+                      }`}>
+                        {renderMessage(message)}
+                      </div>
+                    </motion.div>
+                  )
                 ))}
               </AnimatePresence>
               {isLoading && (
@@ -154,7 +223,7 @@ export default function Chat() {
                   <div className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 max-w-[85%] rounded-2xl px-4 py-3 shadow-sm">
                     <div className="flex items-center space-x-2">
                       <Loader2 className="h-4 w-4 animate-spin text-[#8445ff]" />
-                      <span className="text-sm font-medium">Thinking...</span>
+                      <span className="text-sm font-medium">Processing...</span>
                     </div>
                   </div>
                 </motion.div>
