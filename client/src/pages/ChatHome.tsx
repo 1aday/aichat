@@ -388,7 +388,7 @@ export default function ChatHome() {
                           className={`max-w-[85%] px-6 py-4 ${
                             message.role === "assistant"
                               ? "chat-bubble-assistant"
-                              : "chat-bubble-user prose prose-invert"
+                              : "chat-bubble-user prose prose-invert prose-p:text-white prose-headings:text-white prose-strong:text-white"
                           }`}
                         >
                           {renderMessage(message)}
