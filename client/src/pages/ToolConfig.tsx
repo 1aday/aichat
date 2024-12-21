@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { useForm } from "react-hook-form";
+import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { createTool } from "@/lib/api";
 import type { ToolDefinition, ToolType, Parameter } from "@/lib/types";
-import { Plus, X, ChevronDown } from "lucide-react";
+import { Plus, X } from "lucide-react";
 
 const parameterSchema = z.object({
   name: z.string().min(1),
@@ -230,10 +230,10 @@ export default function ToolConfig() {
                   <FormItem>
                     <FormLabel>Description</FormLabel>
                     <FormControl>
-                      <Textarea 
+                      <Textarea
                         placeholder="Get the current weather for a given location"
                         className="min-h-[100px]"
-                        {...field} 
+                        {...field}
                       />
                     </FormControl>
                     <FormMessage />
@@ -390,8 +390,8 @@ export default function ToolConfig() {
               )}
             </CardContent>
             <CardFooter>
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 className="w-full bg-[#8445ff] hover:bg-[#6a37cc]"
                 disabled={isSubmitting}
               >
