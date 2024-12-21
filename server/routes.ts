@@ -16,11 +16,11 @@ async function executeToolWithClaude(toolDef: ToolDefinition, input: any): Promi
   try {
     switch (toolDef.name) {
       case 'bigquery':
-        // Validate input has required query parameter
         if (!input?.query) {
           throw new Error('Query is required for BigQuery tool');
         }
-        return await executeBigQueryQuery(input.query);
+        const result = await executeBigQueryQuery(input.query);
+        return result.rows; // Just return the rows directly
       default:
         throw new Error(`Unknown tool: ${toolDef.name}`);
     }
@@ -80,10 +80,7 @@ export function registerRoutes(app: Express) {
   // Chat endpoint
   app.post("/api/chat", async (req, res) => {
     try {
-      // Get available tools
       const availableTools = await db.select().from(tools);
-
-      // Format tools according to Anthropic's requirements
       const toolDefinitions = availableTools.map(tool => ({
         name: tool.name,
         description: tool.description,
@@ -103,91 +100,77 @@ export function registerRoutes(app: Express) {
       });
 
       // Handle tool calls
-      if (response.stop_reason === 'tool_use') {
-        // Get the tool use request from the last content block
+      if (response.stop_reason === 'tool_use' && response.content[response.content.length - 1].type === 'tool_use') {
         const toolUseBlock = response.content[response.content.length - 1];
+        const tool = availableTools.find(t => t.name === toolUseBlock.name);
 
-        if (toolUseBlock.type === 'tool_use') {
-          // Find the corresponding tool
-          const tool = availableTools.find(t => t.name === toolUseBlock.name);
+        if (tool) {
+          try {
+            const result = await executeToolWithClaude(
+              {
+                name: tool.name,
+                description: tool.description,
+                type: tool.type,
+                config: tool.config,
+                input_schema: tool.inputSchema
+              },
+              toolUseBlock.input
+            );
 
-          if (tool) {
-            try {
-              // Execute the tool
-              const result = await executeToolWithClaude(
-                {
-                  name: tool.name,
-                  description: tool.description,
-                  type: tool.type,
-                  config: tool.config,
-                  input_schema: tool.inputSchema
-                },
-                toolUseBlock.input
-              );
+            // Store execution in database
+            await db.insert(toolExecutions).values({
+              toolId: tool.id,
+              input: toolUseBlock.input,
+              output: result,
+            });
 
-              // Log the execution
-              await db.insert(toolExecutions).values({
-                toolId: tool.id,
-                input: toolUseBlock.input,
-                output: result,
-              });
-
-              // Add tool result to conversation
-              const updatedMessages = [
-                ...messages,
-                { role: "assistant", content: response.content },
-                {
-                  role: "user",
-                  content: [{
-                    type: "tool_result",
-                    tool_use_id: toolUseBlock.id,
-                    content: JSON.stringify(result)
-                  }]
-                }
-              ];
-
-              // Get final response from Claude
-              const finalResponse = await anthropic.messages.create({
-                model: "claude-3-5-sonnet-20241022",
-                max_tokens: 1024,
-                messages: updatedMessages,
-                tools: toolDefinitions
-              });
-
-              res.json({
-                response: finalResponse.content[0].text,
-                messages: [...updatedMessages, {
-                  role: "assistant",
-                  content: finalResponse.content
+            // Continue conversation with tool result
+            const updatedMessages = [
+              ...messages,
+              { role: "assistant", content: response.content },
+              {
+                role: "user",
+                content: [{
+                  type: "tool_result",
+                  tool_use_id: toolUseBlock.id,
+                  content: JSON.stringify(result)
                 }]
-              });
-              return;
-            } catch (error: any) {
-              console.error('Tool execution error:', error);
-              // Pass the actual error message to the client
-              if (error.errors && error.errors[0]) {
-                res.status(500).json({ error: error.errors[0].message });
-              } else {
-                res.status(500).json({ error: error.message || 'Unknown error occurred' });
               }
-              return;
+            ];
+
+            const finalResponse = await anthropic.messages.create({
+              model: "claude-3-5-sonnet-20241022",
+              max_tokens: 1024,
+              messages: updatedMessages,
+              tools: toolDefinitions
+            });
+
+            res.json({
+              messages: [...updatedMessages, {
+                role: "assistant",
+                content: finalResponse.content
+              }]
+            });
+            return;
+          } catch (error: any) {
+            console.error('Tool execution error:', error);
+            // Pass the actual error message to the client
+            if (error.errors && error.errors[0]) {
+              res.status(500).json({ error: error.errors[0].message });
+            } else {
+              res.status(500).json({ error: error.message || 'Unknown error occurred' });
             }
+            return;
           }
         }
       }
 
       // For regular responses without tool use
-      const responseMessages = [
-        ...messages,
-        {
+      res.json({
+        messages: [...messages, {
           role: "assistant",
           content: response.content
-        }
-      ];
-
-      res.json({
-        response: response.content[0].text,
-        messages: responseMessages
+        }]
       });
 
     } catch (error: any) {
