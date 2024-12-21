@@ -3,8 +3,13 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { listTools } from "@/lib/api";
-import { Send, Loader2 } from "lucide-react";
+import { Send, Loader2, ChevronRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface Message {
@@ -89,12 +94,19 @@ export default function Chat() {
       if (block.type === 'tool_use') {
         return (
           <div key={index} className="text-sm mt-2">
-            <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3">
-              <p className="text-xs text-gray-500 mb-2">Using tool: {block.name}</p>
-              <pre className="font-mono text-gray-800 dark:text-gray-200 overflow-x-auto">
-                {JSON.stringify(block.input, null, 2)}
-              </pre>
-            </div>
+            <Collapsible>
+              <CollapsibleTrigger className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
+                <ChevronRight className="h-3 w-3" />
+                Using tool: {block.name}
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 mt-2">
+                  <pre className="font-mono text-gray-800 dark:text-gray-200 overflow-x-auto">
+                    {JSON.stringify(block.input, null, 2)}
+                  </pre>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
           </div>
         );
       }
