@@ -100,7 +100,7 @@ export default function Chat() {
         const hasToolResult = nextBlock && nextBlock.type === 'tool_result';
 
         blocks.push(
-          <div key={`tool-${index}`} className="text-sm mt-3">
+          <div key={`tool-${index}`} className="text-sm mt-2">
             <Collapsible>
               <CollapsibleTrigger className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
                 <ChevronRight className="h-3 w-3" />
@@ -114,7 +114,7 @@ export default function Chat() {
                   </pre>
                   {hasToolResult && (
                     <>
-                      <p className="text-xs text-gray-500 mt-3 mb-2">Result:</p>
+                      <p className="text-xs text-gray-500 mt-3 mb-2">Tool result:</p>
                       <pre className="font-mono text-gray-800 dark:text-gray-200 overflow-x-auto">
                         {nextBlock.content}
                       </pre>
