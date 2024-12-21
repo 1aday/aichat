@@ -349,11 +349,11 @@ export default function Chat() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white dark:from-gray-950 dark:to-gray-900">
-      <div className="max-w-4xl mx-auto pt-8 pb-24 px-4">
-        <div className="relative h-[calc(100vh-8rem)]">
+      <div className="max-w-7xl mx-auto pt-4 pb-16 px-6">
+        <div className="relative h-[calc(100vh-5rem)]">
           <div className="absolute inset-0 flex flex-col">
             {/* Messages Container */}
-            <div className="flex-1 overflow-y-auto space-y-4 scroll-smooth px-2 messages-container rounded-2xl">
+            <div className="flex-1 overflow-y-auto space-y-4 scroll-smooth px-4 messages-container rounded-2xl">
               <AnimatePresence initial={false}>
                 {messages.map((message, i) => (
                   message.role !== "tool" && (
@@ -365,7 +365,7 @@ export default function Chat() {
                       transition={{ duration: 0.3 }}
                       className={`flex ${message.role === "assistant" ? "justify-start" : "justify-end"}`}
                     >
-                      <div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${
+                      <div className={`max-w-[90%] rounded-2xl px-6 py-4 shadow-sm ${
                         message.role === "assistant"
                           ? "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 prose-pre:bg-gray-900 prose-pre:text-gray-100"
                           : "bg-[#8445ff] text-white prose-headings:text-white prose-p:text-white prose-strong:text-white"
@@ -376,7 +376,6 @@ export default function Chat() {
                   )
                 ))}
               </AnimatePresence>
-
               {/* Loading and Processing States */}
               {(isWaitingForResponse || isProcessingTools) && (
                 <motion.div

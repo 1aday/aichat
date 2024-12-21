@@ -10,9 +10,9 @@ function App() {
   const [location] = useLocation();
 
   return (
-    <div>
-      <nav className="border-b">
-        <div className="container mx-auto px-4">
+    <div className="min-h-screen">
+      <nav className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
+        <div className="max-w-[98%] w-full mx-auto px-6">
           <div className="flex h-16 items-center justify-between">
             <div className="flex items-center">
               <h1 className="text-2xl font-black font-montserrat text-[#8445ff]">
@@ -37,13 +37,15 @@ function App() {
         </div>
       </nav>
 
-      <main className="min-h-screen bg-gray-50">
-        <Switch>
-          <Route path="/" component={Home} />
-          <Route path="/tools/new" component={ToolConfig} />
-          <Route path="/chat" component={Chat} />
-          <Route component={NotFound} />
-        </Switch>
+      <main className="min-h-[calc(100vh-4rem)] bg-gray-50">
+        <div className="max-w-[98%] w-full mx-auto">
+          <Switch>
+            <Route path="/" component={Home} />
+            <Route path="/tools/new" component={ToolConfig} />
+            <Route path="/chat" component={Chat} />
+            <Route component={NotFound} />
+          </Switch>
+        </div>
       </main>
     </div>
   );
