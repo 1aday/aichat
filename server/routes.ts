@@ -3,16 +3,11 @@ import { createServer } from "http";
 import { db } from "@db";
 import { tools, toolExecutions } from "@db/schema";
 import { executeBigQueryQuery } from "./lib/bigquery";
+import { sendChatMessage } from "./lib/openai";
 import { eq } from "drizzle-orm";
 import type { ToolDefinition, Tool, ToolType } from "../client/src/lib/types";
-import { Anthropic } from "@anthropic-ai/sdk";
 
-// Create Anthropic client
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
-
-async function executeToolWithClaude(toolDef: ToolDefinition, input: any): Promise<any> {
+async function executeToolWithOpenAI(toolDef: ToolDefinition, input: any): Promise<any> {
   try {
     switch (toolDef.name) {
       case 'bigquery':
@@ -20,7 +15,7 @@ async function executeToolWithClaude(toolDef: ToolDefinition, input: any): Promi
           throw new Error('Query is required for BigQuery tool');
         }
         const result = await executeBigQueryQuery(input.query);
-        return result.rows; // Just return the rows directly
+        return result.rows;
       default:
         throw new Error(`Unknown tool: ${toolDef.name}`);
     }
@@ -44,7 +39,7 @@ export function registerRoutes(app: Express) {
         const [tool] = await db.insert(tools).values({
           name: "bigquery",
           description: "Execute BigQuery SQL queries to analyze data. Use this tool when you need to query data from BigQuery tables.",
-          type: "client" as ToolType,
+          type: "function" as ToolType,
           config: {},
           inputSchema: {
             type: "object",
@@ -54,7 +49,8 @@ export function registerRoutes(app: Express) {
                 description: "The SQL query to execute"
               }
             },
-            required: ["query"]
+            required: ["query"],
+            additionalProperties: false
           }
         }).returning();
 
@@ -81,80 +77,59 @@ export function registerRoutes(app: Express) {
   app.post("/api/chat", async (req, res) => {
     try {
       const availableTools = await db.select().from(tools);
-      const toolDefinitions = availableTools.map(tool => ({
-        name: tool.name,
-        description: tool.description,
-        input_schema: tool.inputSchema
-      }));
-
       let messages = req.body.messages || [];
+
       if (!Array.isArray(messages)) {
         messages = [{ role: "user", content: req.body.message }];
       }
 
-      const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
-        max_tokens: 1024,
-        messages,
-        tools: toolDefinitions
-      });
+      const response = await sendChatMessage(messages, availableTools as Tool[]);
+      const lastMessage = response.messages[response.messages.length - 1];
 
       // Handle tool calls
-      if (response.stop_reason === 'tool_use' && response.content[response.content.length - 1].type === 'tool_use') {
-        const toolUseBlock = response.content[response.content.length - 1];
-        const tool = availableTools.find(t => t.name === toolUseBlock.name);
+      if (lastMessage.tool_calls) {
+        const toolCalls = lastMessage.tool_calls;
+        const tool = availableTools.find(t => t.name === toolCalls[0].function.name);
 
         if (tool) {
           try {
-            const result = await executeToolWithClaude(
+            const result = await executeToolWithOpenAI(
               {
                 name: tool.name,
                 description: tool.description,
-                type: tool.type,
-                config: tool.config,
-                input_schema: tool.inputSchema
+                type: tool.type as ToolType,
+                function: {
+                  name: tool.name,
+                  description: tool.description,
+                  parameters: tool.inputSchema
+                }
               },
-              toolUseBlock.input
+              JSON.parse(toolCalls[0].function.arguments)
             );
 
             // Store execution in database
             await db.insert(toolExecutions).values({
               toolId: tool.id,
-              input: toolUseBlock.input,
+              input: JSON.parse(toolCalls[0].function.arguments),
               output: result,
             });
 
             // Continue conversation with tool result
             const updatedMessages = [
-              ...messages,
-              { role: "assistant", content: response.content },
+              ...messages, 
+              lastMessage,
               {
-                role: "user",
-                content: [{
-                  type: "tool_result",
-                  tool_use_id: toolUseBlock.id,
-                  content: JSON.stringify(result)
-                }]
+                role: "tool",
+                content: JSON.stringify(result),
+                tool_call_id: toolCalls[0].id
               }
             ];
 
-            const finalResponse = await anthropic.messages.create({
-              model: "claude-3-5-sonnet-20241022",
-              max_tokens: 1024,
-              messages: updatedMessages,
-              tools: toolDefinitions
-            });
-
-            res.json({
-              messages: [...updatedMessages, {
-                role: "assistant",
-                content: finalResponse.content
-              }]
-            });
+            const finalResponse = await sendChatMessage(updatedMessages, availableTools as Tool[]);
+            res.json(finalResponse);
             return;
           } catch (error: any) {
             console.error('Tool execution error:', error);
-            // Pass the actual error message to the client
             if (error.errors && error.errors[0]) {
               res.status(500).json({ error: error.errors[0].message });
             } else {
@@ -166,12 +141,7 @@ export function registerRoutes(app: Express) {
       }
 
       // For regular responses without tool use
-      res.json({
-        messages: [...messages, {
-          role: "assistant",
-          content: response.content
-        }]
-      });
+      res.json(response);
 
     } catch (error: any) {
       console.error("Chat error:", error);

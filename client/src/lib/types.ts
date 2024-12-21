@@ -1,9 +1,8 @@
 import { z } from 'zod';
 
-export type ToolType = 'webhook' | 'client';
+export type ToolType = 'function';
 
 export interface Parameter {
-  name: string;
   type: string;
   description?: string;
   required?: boolean;
@@ -13,24 +12,25 @@ export interface WebhookConfig {
   method: 'GET' | 'POST' | 'PUT' | 'DELETE';
   url: string;
   headers: Record<string, string>;
-  pathParameters: Parameter[];
-  queryParameters: Parameter[];
-  bodyParameters: Parameter[];
 }
 
 export interface ToolDefinition {
   name: string;
   description: string;
   type: ToolType;
-  config: WebhookConfig | Record<string, never>;
-  input_schema: {
-    type: string;
-    properties: Record<string, {
+  function: {
+    name: string;
+    description: string;
+    parameters: {
       type: string;
-      description?: string;
-      enum?: string[];
-    }>;
-    required?: string[];
+      properties: Record<string, {
+        type: string;
+        description?: string;
+        enum?: string[];
+      }>;
+      required?: string[];
+      additionalProperties?: boolean;
+    };
   };
 }
 
@@ -40,7 +40,16 @@ export interface Tool {
   description: string;
   type: ToolType;
   config: WebhookConfig | Record<string, never>;
-  inputSchema: ToolDefinition['input_schema'];
+  inputSchema: {
+    type: string;
+    properties: Record<string, {
+      type: string;
+      description?: string;
+      enum?: string[];
+    }>;
+    required?: string[];
+    additionalProperties?: boolean;
+  };
   createdAt: string;
   updatedAt: string;
 }
