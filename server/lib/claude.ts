@@ -1,5 +1,6 @@
 import { Anthropic } from '@anthropic-ai/sdk';
 import type { ToolDefinition } from '../../client/src/lib/types';
+import { executeBigQueryQuery } from './bigquery';
 
 // the newest Anthropic model is "claude-3-5-sonnet-20241022" which was released October 22, 2024
 const MODEL = 'claude-3-5-sonnet-20241022';
@@ -18,6 +19,12 @@ export async function executeToolWithClaude(
   prompt: string
 ): Promise<any> {
   try {
+    if (tool.type === 'client' && tool.name === 'bigquery') {
+      // Execute BigQuery
+      const result = await executeBigQueryQuery(input.query);
+      return result;
+    }
+
     const response = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 1024,
@@ -25,7 +32,7 @@ export async function executeToolWithClaude(
         ...tool,
         input_schema: {
           ...tool.input_schema,
-          type: 'object' // Ensure type is always 'object' as required by Claude
+          type: 'object'
         }
       }],
       messages: [{
