@@ -9,7 +9,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { listTools } from "@/lib/api";
-import { Send, Loader2, ChevronRight } from "lucide-react";
+import { Send, Loader2, ChevronRight, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface Message {
@@ -96,28 +96,49 @@ export default function Chat() {
 
         blocks.push(
           <div key={`tool-${index}`} className="text-sm mt-2">
-            <Collapsible>
-              <CollapsibleTrigger className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
-                <ChevronRight className="h-3 w-3" />
-                Using tool: {block.name}
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 mt-2">
-                  <p className="text-xs text-gray-500 mb-2">Input:</p>
-                  <pre className="font-mono text-gray-800 dark:text-gray-200 overflow-x-auto">
-                    {JSON.stringify(block.input, null, 2)}
-                  </pre>
-                  {hasToolResult && (
-                    <>
-                      <p className="text-xs text-gray-500 mt-3 mb-2">Tool result:</p>
-                      <pre className="font-mono text-gray-800 dark:text-gray-200 overflow-x-auto">
-                        {nextBlock.content}
-                      </pre>
-                    </>
-                  )}
+            <div className="flex flex-col gap-2">
+              {/* Tool Usage Progress Steps */}
+              <div className="flex flex-col gap-1.5 bg-black/5 dark:bg-white/5 rounded-lg p-3">
+                <div className="flex items-center gap-2 text-xs">
+                  <Check className="h-3.5 w-3.5 text-green-500" />
+                  <span className="text-gray-600 dark:text-gray-300">Called tool: {block.name}</span>
                 </div>
-              </CollapsibleContent>
-            </Collapsible>
+                <div className="flex items-center gap-2 text-xs">
+                  {hasToolResult ? (
+                    <Check className="h-3.5 w-3.5 text-green-500" />
+                  ) : (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-[#8445ff]" />
+                  )}
+                  <span className="text-gray-600 dark:text-gray-300">
+                    {hasToolResult ? "Received response" : "Waiting for response..."}
+                  </span>
+                </div>
+              </div>
+
+              {/* Collapsible Tool Details */}
+              <Collapsible>
+                <CollapsibleTrigger className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
+                  <ChevronRight className="h-3 w-3" />
+                  View details
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 mt-2">
+                    <p className="text-xs text-gray-500 mb-2">Input:</p>
+                    <pre className="font-mono text-gray-800 dark:text-gray-200 overflow-x-auto">
+                      {JSON.stringify(block.input, null, 2)}
+                    </pre>
+                    {hasToolResult && (
+                      <>
+                        <p className="text-xs text-gray-500 mt-3 mb-2">Tool result:</p>
+                        <pre className="font-mono text-gray-800 dark:text-gray-200 overflow-x-auto">
+                          {nextBlock.content}
+                        </pre>
+                      </>
+                    )}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            </div>
           </div>
         );
 
