@@ -73,13 +73,8 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Chat endpoint with SSE for real-time updates
+  // Chat endpoint
   app.post("/api/chat", async (req, res) => {
-    // Set headers for Server-Sent Events
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-
     try {
       const availableTools = await db.select().from(tools);
       let messages = req.body.messages || [];
@@ -92,12 +87,6 @@ export function registerRoutes(app: Express): Server {
       const response = await sendChatMessage(messages, availableTools as Tool[]);
       const lastMessage = response.messages[response.messages.length - 1];
 
-      // Send initial assistant message
-      res.write(`data: ${JSON.stringify({
-        type: "assistant_message",
-        message: lastMessage
-      })}\n\n`);
-
       // Handle tool calls
       if (lastMessage.tool_calls) {
         const toolCalls = lastMessage.tool_calls;
@@ -105,12 +94,6 @@ export function registerRoutes(app: Express): Server {
 
         if (tool) {
           try {
-            // Send tool call start event
-            res.write(`data: ${JSON.stringify({
-              type: "tool_call_start",
-              tool_call: toolCalls[0]
-            })}\n\n`);
-
             const result = await executeToolWithOpenAI(
               {
                 name: tool.name,
@@ -132,13 +115,6 @@ export function registerRoutes(app: Express): Server {
               output: result,
             });
 
-            // Send tool call result event
-            res.write(`data: ${JSON.stringify({
-              type: "tool_call_result",
-              tool_call_id: toolCalls[0].id,
-              result
-            })}\n\n`);
-
             // Continue conversation with tool result
             const updatedMessages = [
               ...messages, 
@@ -151,35 +127,20 @@ export function registerRoutes(app: Express): Server {
             ];
 
             const finalResponse = await sendChatMessage(updatedMessages, availableTools as Tool[]);
-
-            // Send final response
-            res.write(`data: ${JSON.stringify({
-              type: "final_response",
-              messages: finalResponse.messages
-            })}\n\n`);
-
-            res.end();
+            res.json(finalResponse);
           } catch (error: any) {
             console.error('Tool execution error:', error);
-            res.write(`data: ${JSON.stringify({
-              type: "error",
-              error: error.message || 'Unknown error occurred'
-            })}\n\n`);
-            res.end();
+            res.status(500).json({ error: error.message || 'Unknown error occurred' });
           }
         }
       } else {
-        // For messages without tool calls, just end the stream
-        res.end();
+        // For regular responses without tool use
+        res.json(response);
       }
 
     } catch (error: any) {
       console.error("Chat error:", error);
-      res.write(`data: ${JSON.stringify({
-        type: "error",
-        error: error.message || 'Unknown error occurred'
-      })}\n\n`);
-      res.end();
+      res.status(500).json({ error: error?.message || 'Unknown error occurred' });
     }
   });
 

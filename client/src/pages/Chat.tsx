@@ -19,19 +19,18 @@ interface Message {
   tool_call_id?: string;
 }
 
-interface ToolCallState {
+interface ToolCall {
   id: string;
-  name: string;
-  arguments: string;
-  status: 'calling' | 'completed';
-  result?: any;
+  function: {
+    name: string;
+    arguments: string;
+  };
 }
 
 export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [toolCalls, setToolCalls] = useState<Record<string, ToolCallState>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { data: tools = [] } = useQuery({
@@ -59,136 +58,59 @@ export default function Chat() {
     setIsLoading(true);
 
     try {
-      const eventSource = new EventSource(`/api/chat`, {
-        withCredentials: true
-      });
-
-      eventSource.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-
-        switch (data.type) {
-          case 'assistant_message':
-            setMessages(prev => [...prev, data.message]);
-            break;
-
-          case 'tool_call_start':
-            const toolCall = data.tool_call;
-            setToolCalls(prev => ({
-              ...prev,
-              [toolCall.id]: {
-                id: toolCall.id,
-                name: toolCall.function.name,
-                arguments: toolCall.function.arguments,
-                status: 'calling'
-              }
-            }));
-            break;
-
-          case 'tool_call_result':
-            setToolCalls(prev => ({
-              ...prev,
-              [data.tool_call_id]: {
-                ...prev[data.tool_call_id],
-                status: 'completed',
-                result: data.result
-              }
-            }));
-            break;
-
-          case 'final_response':
-            setMessages(data.messages);
-            setIsLoading(false);
-            eventSource.close();
-            break;
-
-          case 'error':
-            console.error("Chat error:", data.error);
-            setMessages(prev => [...prev, { 
-              role: "assistant", 
-              content: `Error: ${data.error}` 
-            }]);
-            setIsLoading(false);
-            eventSource.close();
-            break;
-        }
-      };
-
-      eventSource.onerror = (error) => {
-        console.error("EventSource error:", error);
-        setIsLoading(false);
-        eventSource.close();
-      };
-
-      fetch("/api/chat", {
+      const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           messages: [...messages, newUserMessage]
         }),
       });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to send message');
+      }
+
+      const data = await response.json();
+      setMessages(data.messages);
     } catch (error: any) {
       console.error("Chat error:", error);
       setMessages(prev => [...prev, { 
         role: "assistant", 
         content: `Error: ${error.message || 'An unexpected error occurred. Please try again.'}` 
       }]);
+    } finally {
       setIsLoading(false);
     }
   }
 
-  function renderToolProgress(toolCall: any) {
-    const toolState = toolCalls[toolCall.id];
-    const hasResult = toolState?.status === 'completed';
-
+  function renderToolCall(toolCall: ToolCall) {
     return (
       <div className="relative mt-4 mb-2">
         {/* Progress Line */}
         <div className="absolute left-[11px] top-0 h-full w-0.5 bg-gray-200 dark:bg-gray-700" />
 
         {/* Tool Execution Step */}
-        <div className="relative flex items-start gap-3 pb-8">
+        <div className="relative flex items-start gap-3">
           <div className="relative z-10 flex h-6 w-6 items-center justify-center rounded-full bg-primary shadow-sm">
             <Terminal className="h-3 w-3 text-white" />
           </div>
           <div>
             <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-              Executing Tool: {toolCall.function.name}
+              Using Tool: {toolCall.function.name}
             </p>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Sending request to function...
+              Processing request...
             </p>
           </div>
         </div>
 
-        {/* Result Step */}
-        <div className="relative flex items-start gap-3">
-          <div className={`relative z-10 flex h-6 w-6 items-center justify-center rounded-full ${
-            hasResult 
-              ? 'bg-green-500' 
-              : 'bg-gray-300 dark:bg-gray-600'
-          } shadow-sm`}>
-            {hasResult ? (
-              <Check className="h-3 w-3 text-white" />
-            ) : (
-              <Loader2 className="h-3 w-3 animate-spin text-white" />
-            )}
-          </div>
-          <div>
-            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-              {hasResult ? 'Tool Execution Complete' : 'Awaiting Response...'}
-            </p>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {hasResult ? 'Processing tool results' : 'Tool is processing your request'}
-            </p>
-          </div>
-        </div>
-
-        {/* Tool Details Collapsible */}
+        {/* Tool Details */}
         <div className="ml-9 mt-4">
           <Collapsible>
             <CollapsibleTrigger className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
               <ChevronRight className="h-3 w-3" />
-              View request details
+              View details
             </CollapsibleTrigger>
             <CollapsibleContent>
               <div className="mt-2 rounded-md bg-gray-50 dark:bg-gray-800/50 p-3">
@@ -196,14 +118,6 @@ export default function Chat() {
                 <pre className="text-xs font-mono bg-white dark:bg-gray-800 rounded p-2 overflow-x-auto">
                   {toolCall.function.arguments}
                 </pre>
-                {hasResult && (
-                  <>
-                    <p className="text-xs text-gray-500 mt-3 mb-1">Tool Response:</p>
-                    <pre className="text-xs font-mono bg-white dark:bg-gray-800 rounded p-2 overflow-x-auto">
-                      {JSON.stringify(toolState.result, null, 2)}
-                    </pre>
-                  </>
-                )}
               </div>
             </CollapsibleContent>
           </Collapsible>
@@ -221,7 +135,7 @@ export default function Chat() {
         {/* Render tool calls if present */}
         {message.tool_calls?.map((toolCall) => (
           <div key={`tool-${toolCall.id}`}>
-            {renderToolProgress(toolCall)}
+            {renderToolCall(toolCall)}
           </div>
         ))}
       </>
