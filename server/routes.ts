@@ -26,7 +26,7 @@ export function registerRoutes(app: Express) {
         const [tool] = await db.insert(tools).values({
           name: "bigquery",
           description: "Execute BigQuery SQL queries to analyze data. Use this tool when you need to query data from BigQuery tables.",
-          type: "function" as ToolType,
+          type: "client" as ToolType,
           config: {},
           inputSchema: {
             type: "object",
@@ -111,17 +111,18 @@ export function registerRoutes(app: Express) {
       // Get available tools
       const availableTools = await db.select().from(tools);
 
-      const toolDefinitions: ToolDefinition[] = availableTools.map(tool => ({
-        name: tool.name,
-        description: tool.description,
-        type: "function",
-        config: tool.config as ToolDefinition['config'],
-        input_schema: {
-          type: "object",
-          properties: tool.inputSchema.properties,
-          required: tool.inputSchema.required || []
-        }
-      }));
+      const toolDefinitions = availableTools.map(tool => {
+        // Prepare the tool definition according to Anthropic's API requirements
+        return {
+          name: tool.name,
+          description: tool.description,
+          input_schema: {
+            type: "object",
+            properties: tool.inputSchema.properties,
+            required: tool.inputSchema.required || []
+          }
+        };
+      });
 
       const response = await anthropic.messages.create({
         model: "claude-3-5-sonnet-20241022",
