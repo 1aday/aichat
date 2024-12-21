@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer } from "http";
 import { db } from "@db";
 import { tools, toolExecutions } from "@db/schema";
-import { executeToolWithClaude } from "./lib/claude";
+import { executeBigQueryQuery } from "./lib/bigquery";
 import { eq } from "drizzle-orm";
 import type { ToolDefinition, Tool, ToolType } from "../client/src/lib/types";
 import { Anthropic } from "@anthropic-ai/sdk";
@@ -11,6 +11,24 @@ import { Anthropic } from "@anthropic-ai/sdk";
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
+
+async function executeToolWithClaude(toolDef: ToolDefinition, input: any): Promise<any> {
+  try {
+    switch (toolDef.name) {
+      case 'bigquery':
+        // Validate input has required query parameter
+        if (!input?.query) {
+          throw new Error('Query is required for BigQuery tool');
+        }
+        return await executeBigQueryQuery(input.query);
+      default:
+        throw new Error(`Unknown tool: ${toolDef.name}`);
+    }
+  } catch (error: any) {
+    console.error('Tool execution error:', error);
+    throw error;
+  }
+}
 
 export function registerRoutes(app: Express) {
   const httpServer = createServer(app);
@@ -49,57 +67,11 @@ export function registerRoutes(app: Express) {
     }
   });
 
-  // Create tool
-  app.post("/api/tools", async (req, res) => {
-    try {
-      const [tool] = await db.insert(tools).values(req.body).returning();
-      res.json(tool);
-    } catch (error: any) {
-      res.status(500).json({ error: error?.message || 'Unknown error occurred' });
-    }
-  });
-
   // List tools
   app.get("/api/tools", async (req, res) => {
     try {
       const allTools = await db.select().from(tools);
       res.json(allTools);
-    } catch (error: any) {
-      res.status(500).json({ error: error?.message || 'Unknown error occurred' });
-    }
-  });
-
-  // Execute tool
-  app.post("/api/tools/:id/execute", async (req, res) => {
-    try {
-      const toolId = parseInt(req.params.id);
-      const [tool] = await db.select().from(tools).where(eq(tools.id, toolId));
-
-      if (!tool) {
-        return res.status(404).json({ error: "Tool not found" });
-      }
-
-      const toolDefinition: ToolDefinition = {
-        name: tool.name,
-        description: tool.description,
-        type: tool.type as ToolType,
-        config: tool.config as ToolDefinition['config'],
-        input_schema: tool.inputSchema
-      };
-
-      const result = await executeToolWithClaude(
-        toolDefinition,
-        req.body.input,
-        req.body.prompt || "Execute this tool with the provided input"
-      );
-
-      const [execution] = await db.insert(toolExecutions).values({
-        toolId,
-        input: req.body.input,
-        output: result,
-      }).returning();
-
-      res.json(execution);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || 'Unknown error occurred' });
     }
@@ -112,9 +84,10 @@ export function registerRoutes(app: Express) {
       const availableTools = await db.select().from(tools);
 
       const toolDefinitions = availableTools.map(tool => ({
+        type: "function",
         name: tool.name,
         description: tool.description,
-        input_schema: {
+        parameters: {
           type: "object",
           properties: tool.inputSchema.properties,
           required: tool.inputSchema.required || []
@@ -129,68 +102,67 @@ export function registerRoutes(app: Express) {
       const response = await anthropic.messages.create({
         model: "claude-3-5-sonnet-20241022",
         max_tokens: 1024,
+        messages,
         tools: toolDefinitions,
-        messages: messages,
       });
 
       // Check if Claude wants to use a tool
-      if (response.stop_reason === 'tool_use') {
-        // Get the tool use request from the last content block
-        const toolUseBlock = response.content[response.content.length - 1];
-
-        if (toolUseBlock.type === 'tool_use') {
+      if (response.stop_reason === 'tool_calls') {
+        const toolCall = response.tool_calls?.[0];
+        if (toolCall) {
           // Find the corresponding tool
-          const tool = availableTools.find(t => t.name === toolUseBlock.name);
+          const tool = availableTools.find(t => t.name === toolCall.function.name);
 
           if (tool) {
-            // Execute the tool
-            const result = await executeToolWithClaude(
-              {
-                name: tool.name,
-                description: tool.description,
-                type: tool.type as ToolType,
-                config: tool.config,
-                input_schema: tool.inputSchema
-              },
-              toolUseBlock.input,
-              "Execute this tool with the provided input"
-            );
+            try {
+              // Execute the tool
+              const result = await executeToolWithClaude(
+                {
+                  name: tool.name,
+                  description: tool.description,
+                  type: tool.type as ToolType,
+                  config: tool.config,
+                  input_schema: tool.inputSchema
+                },
+                JSON.parse(toolCall.function.arguments)
+              );
 
-            // Log the execution
-            await db.insert(toolExecutions).values({
-              toolId: tool.id,
-              input: toolUseBlock.input,
-              output: result,
-            });
+              // Log the execution
+              await db.insert(toolExecutions).values({
+                toolId: tool.id,
+                input: JSON.parse(toolCall.function.arguments),
+                output: result,
+              });
 
-            // Create a new message array including the tool result
-            const updatedMessages = [
-              ...messages,
-              { role: "assistant", content: response.content },
-              { 
-                role: "user", 
-                content: [
-                  {
-                    type: "tool_result",
-                    tool_call_id: toolUseBlock.id,
-                    content: JSON.stringify(result)
-                  }
-                ]
-              }
-            ];
+              // Add tool result to conversation
+              const updatedMessages = [
+                ...messages,
+                { role: "assistant", content: response.content },
+                {
+                  role: "function",
+                  name: toolCall.function.name,
+                  content: JSON.stringify(result)
+                }
+              ];
 
-            // Get final response from Claude with the tool result
-            const finalResponse = await anthropic.messages.create({
-              model: "claude-3-5-sonnet-20241022",
-              max_tokens: 1024,
-              messages: updatedMessages,
-            });
+              // Get final response from Claude
+              const finalResponse = await anthropic.messages.create({
+                model: "claude-3-5-sonnet-20241022",
+                max_tokens: 1024,
+                messages: updatedMessages,
+                tools: toolDefinitions,
+              });
 
-            res.json({ 
-              response: finalResponse.content[0].text,
-              messages: updatedMessages
-            });
-            return;
+              res.json({
+                response: finalResponse.content[0].text,
+                messages: updatedMessages
+              });
+              return;
+            } catch (error: any) {
+              console.error('Tool execution error:', error);
+              res.status(500).json({ error: error.message });
+              return;
+            }
           }
         }
       }
@@ -201,7 +173,7 @@ export function registerRoutes(app: Express) {
         { role: "assistant", content: response.content }
       ];
 
-      res.json({ 
+      res.json({
         response: response.content[0].text,
         messages: responseMessages
       });
