@@ -2,7 +2,6 @@ import * as React from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
-import { MarkdownTable } from "./markdown-table";
 
 interface MarkdownRendererProps {
   content: string;
@@ -10,155 +9,12 @@ interface MarkdownRendererProps {
 }
 
 export function MarkdownRenderer({ content, className }: MarkdownRendererProps) {
-  console.log("Rendering markdown content:", content);
-
   return (
     <div className={cn("prose prose-gray dark:prose-invert max-w-none", className)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          // Table rendering component
-          table: ({ children }) => {
-            try {
-              // Extract headers and rows from the table
-              const tableContent = React.Children.toArray(children);
-              console.log("Table content:", tableContent);
-
-              // Get header row
-              const thead = tableContent.find(
-                child => React.isValidElement(child) && child.type === "thead"
-              );
-
-              // Get body rows
-              const tbody = tableContent.find(
-                child => React.isValidElement(child) && child.type === "tbody"
-              );
-
-              if (!thead || !tbody || !React.isValidElement(thead) || !React.isValidElement(tbody)) {
-                console.warn("Invalid table structure", { thead, tbody });
-                return null;
-              }
-
-              // Extract header cells
-              const headerRow = React.Children.toArray(thead.props.children)[0];
-              if (!React.isValidElement(headerRow)) {
-                console.warn("Invalid header row structure");
-                return null;
-              }
-
-              const headers = React.Children.toArray(headerRow.props.children)
-                .filter(cell => React.isValidElement(cell))
-                .map(cell => {
-                  if (React.isValidElement(cell)) {
-                    return React.Children.toArray(cell.props.children)
-                      .map(child => typeof child === "string" ? child : "")
-                      .join("")
-                      .trim();
-                  }
-                  return "";
-                })
-                .filter(Boolean);
-
-              // Extract body rows
-              const rows = React.Children.toArray(tbody.props.children)
-                .filter(row => React.isValidElement(row))
-                .map(row => {
-                  if (React.isValidElement(row)) {
-                    return React.Children.toArray(row.props.children)
-                      .filter(cell => React.isValidElement(cell))
-                      .map(cell => {
-                        if (React.isValidElement(cell)) {
-                          return React.Children.toArray(cell.props.children)
-                            .map(child => typeof child === "string" ? child : "")
-                            .join("")
-                            .trim();
-                        }
-                        return "";
-                      });
-                  }
-                  return [];
-                });
-
-              console.log("Extracted table data:", { headers, rows });
-
-              if (!headers.length || !rows.length) {
-                console.warn("Empty table data");
-                return null;
-              }
-
-              return (
-                <div className="not-prose my-6">
-                  <MarkdownTable headers={headers} rows={rows} />
-                </div>
-              );
-            } catch (error) {
-              console.error("Error rendering table:", error);
-              return null;
-            }
-          },
-
-          // Code block rendering component
-          code: ({ node, inline, className, children, ...props }) => {
-            const match = /language-(\w+)/.exec(className || "");
-            const lang = match ? match[1] : "";
-            const isMarkdownTable = lang === "markdown" && typeof children === "string" && children.includes("|");
-
-            // If it's a markdown table inside a code block, parse and render it
-            if (isMarkdownTable) {
-              try {
-                console.log("Parsing markdown table from code block");
-                const lines = children.toString().trim().split("\n");
-                const headers = lines[0]
-                  .split("|")
-                  .filter(Boolean)
-                  .map(header => header.trim());
-
-                // Skip the separator line
-                const rows = lines.slice(2)
-                  .map(line => 
-                    line
-                      .split("|")
-                      .filter(Boolean)
-                      .map(cell => cell.trim())
-                  )
-                  .filter(row => row.length === headers.length);
-
-                console.log("Parsed table from code block:", { headers, rows });
-
-                return (
-                  <div className="not-prose my-6">
-                    <MarkdownTable headers={headers} rows={rows} />
-                  </div>
-                );
-              } catch (error) {
-                console.error("Error parsing markdown table from code block:", error);
-              }
-            }
-
-            // For inline code, keep the existing styling
-            if (inline) {
-              return (
-                <code
-                  className={cn(
-                    "relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm",
-                    className
-                  )}
-                  {...props}
-                >
-                  {children}
-                </code>
-              );
-            }
-
-            // For code blocks, render as plain text with minimal styling
-            return (
-              <pre className="whitespace-pre-wrap break-words bg-muted p-4 rounded-md font-mono text-sm">
-                <code {...props}>{children}</code>
-              </pre>
-            );
-          },
-
-          // Other markdown components with proper styling
+          // Basic markdown components with proper styling
           p: ({ children }) => (
             <p className="leading-7 [&:not(:first-child)]:mt-6">{children}</p>
           ),
@@ -188,6 +44,39 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
               {children}
             </blockquote>
           ),
+          code: ({ node, inline, className, children, ...props }) => {
+            if (inline) {
+              return (
+                <code
+                  className={cn(
+                    "relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm",
+                    className
+                  )}
+                  {...props}
+                >
+                  {children}
+                </code>
+              );
+            }
+            return (
+              <pre className="whitespace-pre-wrap break-words bg-muted p-4 rounded-md font-mono text-sm">
+                <code {...props}>{children}</code>
+              </pre>
+            );
+          },
+          // Let the default table rendering take over
+          table: ({ children }) => (
+            <div className="my-6 w-full overflow-y-auto">
+              <table className="w-full">{children}</table>
+            </div>
+          ),
+          thead: ({ children }) => <thead className="border-b">{children}</thead>,
+          tbody: ({ children }) => <tbody>{children}</tbody>,
+          tr: ({ children }) => <tr className="border-b">{children}</tr>,
+          th: ({ children }) => (
+            <th className="border px-4 py-2 text-left font-semibold">{children}</th>
+          ),
+          td: ({ children }) => <td className="border px-4 py-2">{children}</td>,
         }}
       >
         {content}
