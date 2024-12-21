@@ -1,8 +1,6 @@
 import * as React from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { cn } from "@/lib/utils";
 import { MarkdownTable } from "./markdown-table";
 
@@ -137,6 +135,7 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
               }
             }
 
+            // For inline code, keep the existing styling
             if (inline) {
               return (
                 <code
@@ -151,24 +150,11 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
               );
             }
 
+            // For code blocks, render as plain text with minimal styling
             return (
-              <div className="relative">
-                <div className="absolute right-2 top-2 text-xs text-muted-foreground">
-                  {lang}
-                </div>
-                <SyntaxHighlighter
-                  language={lang}
-                  style={vscDarkPlus}
-                  customStyle={{
-                    margin: 0,
-                    borderRadius: "0.5rem",
-                    padding: "1.5rem 1rem",
-                  }}
-                  PreTag="div"
-                >
-                  {String(children).replace(/\n$/, "")}
-                </SyntaxHighlighter>
-              </div>
+              <pre className="whitespace-pre-wrap break-words bg-muted p-4 rounded-md font-mono text-sm">
+                <code {...props}>{children}</code>
+              </pre>
             );
           },
 
