@@ -83,14 +83,12 @@ export function registerRoutes(app: Express) {
       // Get available tools
       const availableTools = await db.select().from(tools);
 
+      // Format tools according to Anthropic's requirements
       const toolDefinitions = availableTools.map(tool => ({
-        type: "function",
-        name: tool.name,
-        description: tool.description,
-        parameters: {
-          type: "object",
-          properties: tool.inputSchema.properties,
-          required: tool.inputSchema.required || []
+        function: {
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.inputSchema
         }
       }));
 
@@ -103,66 +101,75 @@ export function registerRoutes(app: Express) {
         model: "claude-3-5-sonnet-20241022",
         max_tokens: 1024,
         messages,
-        tools: toolDefinitions,
+        tools: toolDefinitions
       });
 
-      // Check if Claude wants to use a tool
-      if (response.stop_reason === 'tool_calls') {
-        const toolCall = response.tool_calls?.[0];
-        if (toolCall) {
-          // Find the corresponding tool
-          const tool = availableTools.find(t => t.name === toolCall.function.name);
+      // Handle tool calls
+      if (response.tool_calls && response.tool_calls.length > 0) {
+        const toolCall = response.tool_calls[0];
+        const tool = availableTools.find(t => t.name === toolCall.function.name);
 
-          if (tool) {
-            try {
-              // Execute the tool
-              const result = await executeToolWithClaude(
-                {
-                  name: tool.name,
-                  description: tool.description,
-                  type: tool.type as ToolType,
-                  config: tool.config,
-                  input_schema: tool.inputSchema
-                },
-                JSON.parse(toolCall.function.arguments)
-              );
+        if (tool) {
+          try {
+            // Execute the tool
+            const result = await executeToolWithClaude(
+              {
+                name: tool.name,
+                description: tool.description,
+                type: tool.type as ToolType,
+                config: tool.config,
+                input_schema: tool.inputSchema
+              },
+              JSON.parse(toolCall.function.arguments)
+            );
 
-              // Log the execution
-              await db.insert(toolExecutions).values({
-                toolId: tool.id,
-                input: JSON.parse(toolCall.function.arguments),
-                output: result,
-              });
+            // Log the execution
+            await db.insert(toolExecutions).values({
+              toolId: tool.id,
+              input: JSON.parse(toolCall.function.arguments),
+              output: result,
+            });
 
-              // Add tool result to conversation
-              const updatedMessages = [
-                ...messages,
-                { role: "assistant", content: response.content },
-                {
-                  role: "function",
-                  name: toolCall.function.name,
-                  content: JSON.stringify(result)
-                }
-              ];
+            // Add tool result to conversation
+            const updatedMessages = [
+              ...messages,
+              { 
+                role: "assistant", 
+                content: [{
+                  type: "text",
+                  text: response.content[0].text
+                }]
+              },
+              {
+                role: "tool",
+                content: JSON.stringify(result),
+                tool_call_id: toolCall.id
+              }
+            ];
 
-              // Get final response from Claude
-              const finalResponse = await anthropic.messages.create({
-                model: "claude-3-5-sonnet-20241022",
-                max_tokens: 1024,
-                messages: updatedMessages,
-                tools: toolDefinitions,
-              });
+            // Get final response from Claude
+            const finalResponse = await anthropic.messages.create({
+              model: "claude-3-5-sonnet-20241022",
+              max_tokens: 1024,
+              messages: updatedMessages,
+              tools: toolDefinitions,
+            });
 
-              res.json({
-                response: finalResponse.content[0].text,
-                messages: updatedMessages
-              });
-              return;
-            } catch (error: any) {
-              console.error('Tool execution error:', error);
-              res.status(500).json({ error: error.message });
-              return;
-            }
+            res.json({
+              response: finalResponse.content[0].text,
+              messages: [...updatedMessages, {
+                role: "assistant",
+                content: [{
+                  type: "text",
+                  text: finalResponse.content[0].text
+                }]
+              }]
+            });
+            return;
+          } catch (error: any) {
+            console.error('Tool execution error:', error);
+            res.status(500).json({ error: error.message });
+            return;
           }
         }
       }
@@ -170,7 +177,13 @@ export function registerRoutes(app: Express) {
       // For regular responses without tool use
       const responseMessages = [
         ...messages,
-        { role: "assistant", content: response.content }
+        {
+          role: "assistant",
+          content: [{
+            type: "text",
+            text: response.content[0].text
+          }]
+        }
       ];
 
       res.json({
