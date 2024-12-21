@@ -74,7 +74,7 @@ export default function Chat() {
     }
   }
 
-  function renderMessageContent(content: string | any[], messageRole: "user" | "assistant") {
+  function renderMessageContent(content: string | any[]) {
     if (typeof content === 'string') {
       return <p className="leading-relaxed whitespace-pre-wrap">{content}</p>;
     }
@@ -83,33 +83,29 @@ export default function Chat() {
       if (block.type === 'text') {
         return <p key={index} className="leading-relaxed whitespace-pre-wrap">{block.text}</p>;
       }
-
-      // Only render tool-related blocks in assistant messages
-      if (messageRole === "assistant") {
-        if (block.type === 'tool_use') {
-          return (
-            <div key={index} className="text-sm space-y-1">
-              <p className="text-xs text-gray-500">Using tool: {block.name}</p>
-              <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3">
-                <pre className="font-mono text-gray-800 dark:text-gray-200 overflow-x-auto">
-                  {JSON.stringify(block.input, null, 2)}
-                </pre>
-              </div>
+      if (block.type === 'tool_use') {
+        return (
+          <div key={index} className="text-sm space-y-1">
+            <p className="text-xs text-gray-500">Using tool: {block.name}</p>
+            <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3">
+              <pre className="font-mono text-gray-800 dark:text-gray-200 overflow-x-auto">
+                {JSON.stringify(block.input, null, 2)}
+              </pre>
             </div>
-          );
-        }
-        if (block.type === 'tool_result') {
-          return (
-            <div key={index} className="text-sm space-y-1">
-              <p className="text-xs text-gray-500">Tool result:</p>
-              <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3">
-                <pre className="font-mono text-gray-800 dark:text-gray-200 overflow-x-auto">
-                  {block.content}
-                </pre>
-              </div>
+          </div>
+        );
+      }
+      if (block.type === 'tool_result') {
+        return (
+          <div key={index} className="text-sm space-y-1">
+            <p className="text-xs text-gray-500">Tool result:</p>
+            <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3">
+              <pre className="font-mono text-gray-800 dark:text-gray-200 overflow-x-auto">
+                {block.content}
+              </pre>
             </div>
-          );
-        }
+          </div>
+        );
       }
       return null;
     });
@@ -139,7 +135,7 @@ export default function Chat() {
                           : "bg-[#8445ff] text-white ml-auto"
                       }`}
                     >
-                      {renderMessageContent(message.content, message.role)}
+                      {renderMessageContent(message.content)}
                     </div>
                   </motion.div>
                 ))}
