@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 export type ToolType = 'webhook' | 'client';
 
 export interface Parameter {
@@ -20,7 +22,7 @@ export interface ToolDefinition {
   name: string;
   description: string;
   type: ToolType;
-  config: WebhookConfig;
+  config: WebhookConfig | Record<string, never>;
   input_schema: {
     type: string;
     properties: Record<string, {
@@ -32,22 +34,22 @@ export interface ToolDefinition {
   };
 }
 
-export interface ToolResponse {
+export interface Tool {
   id: number;
   name: string;
   description: string;
   type: ToolType;
-  config: WebhookConfig;
-  input_schema: ToolDefinition['input_schema'];
-  created_at: string;
-  updated_at: string;
+  config: WebhookConfig | Record<string, never>;
+  inputSchema: ToolDefinition['input_schema'];
+  createdAt: string;
+  updatedAt: string;
 }
 
-export interface ToolExecutionResponse {
+export interface ToolExecution {
   id: number;
-  tool_id: number;
+  toolId: number;
   input: Record<string, any>;
   output?: Record<string, any>;
   error?: string;
-  created_at: string;
+  createdAt: string;
 }

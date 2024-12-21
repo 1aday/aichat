@@ -5,6 +5,8 @@ export const tools = pgTable("tools", {
   id: serial("id").primaryKey(),
   name: text("name").notNull().unique(),
   description: text("description").notNull(),
+  type: text("type").notNull(),
+  config: jsonb("config").notNull(),
   inputSchema: jsonb("input_schema").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

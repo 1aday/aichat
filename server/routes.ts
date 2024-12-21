@@ -4,7 +4,7 @@ import { db } from "@db";
 import { tools, toolExecutions } from "@db/schema";
 import { executeToolWithClaude } from "./lib/claude";
 import { eq } from "drizzle-orm";
-import type { ToolDefinition } from "../client/src/lib/types";
+import type { ToolDefinition, Tool, ToolType } from "../client/src/lib/types";
 import { Anthropic } from "@anthropic-ai/sdk";
 
 // Create Anthropic client
@@ -14,6 +14,40 @@ const anthropic = new Anthropic({
 
 export function registerRoutes(app: Express) {
   const httpServer = createServer(app);
+
+  // Setup default tools endpoint
+  app.get("/api/setup-default-tools", async (req, res) => {
+    try {
+      // Check if BigQuery tool exists
+      const existingTools = await db.select().from(tools).where(eq(tools.name, 'bigquery'));
+
+      if (existingTools.length === 0) {
+        // Create BigQuery tool if it doesn't exist
+        const [tool] = await db.insert(tools).values({
+          name: "bigquery",
+          description: "Execute BigQuery SQL queries to analyze data. Use this tool when you need to query data from BigQuery tables.",
+          type: "client" as ToolType,
+          config: {},
+          inputSchema: {
+            type: "object",
+            properties: {
+              query: {
+                type: "string",
+                description: "The SQL query to execute on BigQuery"
+              }
+            },
+            required: ["query"]
+          }
+        }).returning();
+
+        res.json({ message: "Default tools created", tool });
+      } else {
+        res.json({ message: "Default tools already exist" });
+      }
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || 'Unknown error occurred' });
+    }
+  });
 
   // Create tool
   app.post("/api/tools", async (req, res) => {
@@ -48,7 +82,9 @@ export function registerRoutes(app: Express) {
       const toolDefinition: ToolDefinition = {
         name: tool.name,
         description: tool.description,
-        input_schema: tool.inputSchema as ToolDefinition['input_schema']
+        type: tool.type as ToolType,
+        config: tool.config as ToolDefinition['config'],
+        input_schema: tool.inputSchema
       };
 
       const result = await executeToolWithClaude(
@@ -75,19 +111,17 @@ export function registerRoutes(app: Express) {
       // Get available tools
       const availableTools = await db.select().from(tools);
 
-      const toolDefinitions = availableTools.map(tool => ({
+      const toolDefinitions: ToolDefinition[] = availableTools.map(tool => ({
         name: tool.name,
         description: tool.description,
-        input_schema: {
-          ...tool.inputSchema,
-          type: 'object'
-        }
+        type: tool.type as ToolType,
+        config: tool.config as ToolDefinition['config'],
+        input_schema: tool.inputSchema
       }));
 
       const response = await anthropic.messages.create({
         model: "claude-3-5-sonnet-20241022",
         max_tokens: 1024,
-        temperature: 0.7,
         tools: toolDefinitions,
         messages: [{
           role: "user",
@@ -95,58 +129,13 @@ export function registerRoutes(app: Express) {
         }],
       });
 
-      // If Claude wants to use a tool
-      if (response.content[0].type === 'tool_calls') {
-        const toolCall = response.content[0].tool_calls[0];
-        const tool = availableTools.find(t => t.name === toolCall.name);
-
-        if (tool) {
-          const result = await executeToolWithClaude(
-            {
-              name: tool.name,
-              description: tool.description,
-              input_schema: tool.inputSchema as ToolDefinition['input_schema']
-            },
-            toolCall.parameters,
-            "Execute this tool with the provided parameters"
-          );
-
-          // Log the execution
-          await db.insert(toolExecutions).values({
-            toolId: tool.id,
-            input: toolCall.parameters,
-            output: result,
-          });
-
-          // Send the result back to Claude
-          const finalResponse = await anthropic.messages.create({
-            model: "claude-3-5-sonnet-20241022",
-            max_tokens: 1024,
-            messages: [
-              { role: "user", content: req.body.message },
-              { 
-                role: "assistant", 
-                content: [{ type: "tool_calls", tool_calls: [toolCall] }]
-              },
-              { 
-                role: "user", 
-                content: [{ 
-                  type: "tool_result",
-                  tool_name: tool.name,
-                  result: JSON.stringify(result)
-                }]
-              }
-            ],
-          });
-
-          res.json({ response: finalResponse.content[0].text });
-        } else {
-          res.json({ response: "I tried to use a tool that wasn't available." });
-        }
-      } else {
-        // Normal response without tool use
-        res.json({ response: response.content[0].text });
+      // Handle normal response without tool use
+      if (!response.content[0] || response.content[0].type !== 'text') {
+        res.json({ response: "I couldn't generate a proper response." });
+        return;
       }
+
+      res.json({ response: response.content[0].text });
     } catch (error: any) {
       console.error("Chat error:", error);
       res.status(500).json({ error: error?.message || 'Unknown error occurred' });

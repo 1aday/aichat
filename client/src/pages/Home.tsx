@@ -5,11 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { listTools } from "@/lib/api";
 import { useEffect } from "react";
+import type { Tool } from "@/lib/types";
 
 export default function Home() {
   const queryClient = useQueryClient();
 
-  const { data: tools = [], isLoading } = useQuery({
+  const { data: tools = [], isLoading } = useQuery<Tool[]>({
     queryKey: ['/api/tools'],
     queryFn: listTools,
   });
