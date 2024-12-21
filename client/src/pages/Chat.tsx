@@ -85,21 +85,25 @@ export default function Chat() {
       }
       if (block.type === 'tool_use') {
         return (
-          <div key={index} className="bg-black/5 dark:bg-white/5 rounded-lg p-3 my-2 font-mono text-sm">
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Using tool: {block.name}</p>
-            <pre className="overflow-x-auto">
-              {JSON.stringify(block.input, null, 2)}
-            </pre>
+          <div key={index} className="font-mono text-sm space-y-1">
+            <p className="text-xs text-gray-500 dark:text-gray-400">Using tool: {block.name}</p>
+            <div className="bg-black/5 dark:bg-white/5 rounded-lg p-3">
+              <pre className="overflow-x-auto">
+                {JSON.stringify(block.input, null, 2)}
+              </pre>
+            </div>
           </div>
         );
       }
       if (block.type === 'tool_result') {
         return (
-          <div key={index} className="bg-black/5 dark:bg-white/5 rounded-lg p-3 my-2 font-mono text-sm">
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Tool result:</p>
-            <pre className="overflow-x-auto">
-              {block.content}
-            </pre>
+          <div key={index} className="font-mono text-sm space-y-1">
+            <p className="text-xs text-gray-500 dark:text-gray-400">Tool result:</p>
+            <div className="bg-black/5 dark:bg-white/5 rounded-lg p-3">
+              <pre className="overflow-x-auto">
+                {block.content}
+              </pre>
+            </div>
           </div>
         );
       }
