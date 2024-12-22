@@ -11,7 +11,6 @@
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.33.1",
     "@google-cloud/bigquery": "^7.9.1",
     "@hookform/resolvers": "^3.9.1",
     "@jridgewell/trace-mapping": "^0.3.25",
@@ -46,6 +45,7 @@
     "@replit/vite-plugin-shadcn-theme-json": "^0.0.4",
     "@tanstack/react-query": "^5.60.5",
     "@tanstack/react-table": "^8.20.6",
+    "ai": "^4.0.22",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "cmdk": "^1.0.0",
@@ -59,7 +59,6 @@
     "input-otp": "^1.2.4",
     "lucide-react": "^0.453.0",
     "memorystore": "^1.6.7",
-    "openai": "^4.77.0",
     "passport": "^0.7.0",
     "passport-local": "^1.0.0",
     "pg": "^8.13.1",
@@ -78,7 +77,8 @@
     "vaul": "^1.1.0",
     "wouter": "^3.3.5",
     "ws": "^8.18.0",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "openai": "^4.77.0"
   },
   "devDependencies": {
     "@replit/vite-plugin-runtime-error-modal": "^0.0.3",

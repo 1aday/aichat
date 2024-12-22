@@ -6,6 +6,19 @@ import { executeBigQueryQuery } from "./lib/bigquery";
 import { sendChatMessage } from "./lib/openai";
 import { eq } from "drizzle-orm";
 import type { Tool, ToolType } from "../client/src/lib/types";
+import { z } from "zod";
+
+type StreamChunk = {
+  choices?: [{
+    delta?: {
+      content?: string;
+      function_call?: {
+        name?: string;
+        arguments?: string;
+      };
+    };
+  }];
+};
 
 async function executeToolWithOpenAI(toolDef: { name: string; description: string; type: ToolType; function: { name: string; description: string; parameters: any; }; }, input: any): Promise<any> {
   try {
@@ -76,71 +89,141 @@ export function registerRoutes(app: Express): Server {
   // Chat endpoint
   app.post("/api/chat", async (req, res) => {
     try {
-      const availableTools = await db.select().from(tools);
-      let messages = req.body.messages || [];
+      const { messages, availableTools } = req.body;
+      
+      const response = await sendChatMessage(messages, availableTools);
+      const stream = response.body;
 
-      if (!Array.isArray(messages)) {
-        messages = [{ role: "user", content: req.body.message }];
+      if (!stream) {
+        return res.status(500).json({ error: 'No stream available' });
       }
 
-      // Get initial response from OpenAI
-      const response = await sendChatMessage(messages, availableTools as Tool[]);
-      const lastMessage = response.messages[response.messages.length - 1];
+      // Set up SSE headers
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
 
-      // Handle tool calls
-      if (lastMessage.tool_calls) {
-        const toolCalls = lastMessage.tool_calls;
-        const tool = availableTools.find(t => t.name === toolCalls[0].function.name);
+      const reader = stream.getReader();
+      const encoder = new TextEncoder();
+      const decoder = new TextDecoder();
 
-        if (tool) {
+      let buffer = '';
+      let functionCallBuffer = {
+        name: '',
+        arguments: ''
+      };
+
+      const stream2 = new ReadableStream({
+        async start(controller) {
           try {
-            const result = await executeToolWithOpenAI(
-              {
-                name: tool.name,
-                description: tool.description,
-                type: tool.type as ToolType,
-                function: {
-                  name: tool.name,
-                  description: tool.description,
-                  parameters: tool.inputSchema
-                }
-              },
-              JSON.parse(toolCalls[0].function.arguments)
-            );
-
-            // Store execution in database
-            await db.insert(toolExecutions).values({
-              toolId: tool.id,
-              input: JSON.parse(toolCalls[0].function.arguments),
-              output: result,
-            });
-
-            // Continue conversation with tool result
-            const updatedMessages = [
-              ...messages, 
-              lastMessage,
-              {
-                role: "tool",
-                content: JSON.stringify(result),
-                tool_call_id: toolCalls[0].id
+            while (true) {
+              const { done, value } = await reader.read();
+              
+              if (done) {
+                controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                break;
               }
-            ];
 
-            const finalResponse = await sendChatMessage(updatedMessages, availableTools as Tool[]);
-            res.json(finalResponse);
-          } catch (error: any) {
-            console.error('Tool execution error:', error);
-            res.status(500).json({ error: error.message || 'Unknown error occurred' });
+              // Append new chunk to buffer and split by newlines
+              buffer += decoder.decode(value);
+              const lines = buffer.split('\n');
+              
+              // Process all complete lines
+              for (let i = 0; i < lines.length - 1; i++) {
+                const line = lines[i].trim();
+                if (!line || line === 'data: [DONE]') continue;
+
+                try {
+                  // Remove 'data: ' prefix if it exists
+                  const jsonStr = line.replace(/^data: /, '');
+                  const parsed = JSON.parse(jsonStr) as StreamChunk;
+
+                  if (parsed.choices?.[0]?.delta?.function_call) {
+                    const { name, arguments: args } = parsed.choices[0].delta.function_call;
+                    
+                    // Accumulate function call parts
+                    if (name) functionCallBuffer.name = name;
+                    if (args) functionCallBuffer.arguments += args;
+
+                    // If we have a complete function call
+                    if (functionCallBuffer.name && functionCallBuffer.arguments) {
+                      try {
+                        // Try to parse the complete arguments
+                        const parsedArgs = JSON.parse(functionCallBuffer.arguments);
+                        
+                        // Find the tool definition
+                        const tool = availableTools.find(t => t.name === functionCallBuffer.name);
+                        if (tool) {
+                          // Execute the tool
+                          const result = await executeToolWithOpenAI(tool, parsedArgs);
+                          
+                          // Send tool result to client
+                          const toolEvent = {
+                            type: 'tool_result',
+                            name: functionCallBuffer.name,
+                            result
+                          };
+                          controller.enqueue(encoder.encode(`data: ${JSON.stringify(toolEvent)}\n\n`));
+                          
+                          // Reset buffer
+                          functionCallBuffer = { name: '', arguments: '' };
+                        }
+                      } catch (e) {
+                        // If JSON.parse fails, we probably don't have complete arguments yet
+                        continue;
+                      }
+                    }
+
+                    // Send function call progress
+                    const event = {
+                      type: 'function_call',
+                      function: parsed.choices[0].delta.function_call
+                    };
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+                  } 
+                  else if (parsed.choices?.[0]?.delta?.content) {
+                    const event = {
+                      type: 'content',
+                      content: parsed.choices[0].delta.content
+                    };
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+                  }
+                } catch (e) {
+                  console.warn('Error parsing chunk:', e);
+                  // Continue to next line if this one fails
+                  continue;
+                }
+              }
+              
+              // Keep the last incomplete line in the buffer
+              buffer = lines[lines.length - 1];
+            }
+          } catch (error) {
+            console.error('Stream processing error:', error);
+            controller.error(error);
+          } finally {
+            controller.close();
           }
         }
-      } else {
-        // For regular responses without tool use
-        res.json(response);
-      }
+      });
 
-    } catch (error: any) {
-      console.error("Chat error:", error);
-      res.status(500).json({ error: error?.message || 'Unknown error occurred' });
+      stream2.pipeTo(new WritableStream({
+        write(chunk) {
+          res.write(chunk);
+        },
+        close() {
+          res.end();
+        },
+        abort(err) {
+          console.error('Stream error:', err);
+          res.end();
+        }
+      }));
+
+    } catch (error: unknown) {
+      console.error('Chat error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      res.status(500).json({ error: errorMessage });
     }
   });
 

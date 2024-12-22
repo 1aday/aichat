@@ -154,12 +154,10 @@ export default function Chat() {
 
     // Add user message immediately
     const newUserMessage: Message = { role: "user", content: userMessage };
-    console.log('Adding user message:', newUserMessage);
     setMessages(prev => [...prev, newUserMessage]);
     setIsWaitingForResponse(true);
 
     try {
-      console.log('Sending message to API');
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -172,77 +170,44 @@ export default function Chat() {
         throw new Error(await response.text());
       }
 
-      const data = await response.json();
-      const assistantMessage = data.messages[data.messages.length - 1];
-      console.log('Received assistant message:', assistantMessage);
+      // Add an initial assistant message
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: ""
+      }]);
 
-      // If there are tool calls, handle them immediately
-      if (assistantMessage.tool_calls) {
-        console.log('Tool calls detected:', assistantMessage.tool_calls);
-        // Add assistant message with pending tool calls
-        const messageWithPendingTools = {
-          ...assistantMessage,
-          tool_calls: assistantMessage.tool_calls.map(call => ({
-            ...call,
-            status: "pending"
-          }))
-        };
+      // Create a decoder for the incoming stream
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
 
-        console.log('Adding message with pending tools:', messageWithPendingTools);
-        setMessages(prev => [...prev, messageWithPendingTools]);
-        setIsWaitingForResponse(false);
-        setIsProcessingTools(true);
-
-        const messageIndex = messages.length + 1; // +1 for the user message we just added
-        console.log('Tool message index:', messageIndex);
-        const toolResults = [];
-
-        // Execute each tool call
-        for (const toolCall of messageWithPendingTools.tool_calls) {
-          try {
-            console.log('Starting tool execution:', toolCall.id);
-            const result = await executeToolCall(toolCall, messageIndex);
-            toolResults.push(result);
-          } catch (error) {
-            console.error("Tool execution error:", error);
-          }
-        }
-
-        console.log('All tool executions completed');
-        setIsProcessingTools(false);
-        setIsWaitingForResponse(true);
-
-        // Get final response with tool results
-        console.log('Getting final response with tool results');
-        const finalResponse = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            messages: [
-              ...messages,
-              newUserMessage,
-              messageWithPendingTools,
-              ...toolResults.map(result => ({
-                role: "tool",
-                content: result.result
-              }))
-            ]
-          }),
-        });
-
-        if (!finalResponse.ok) {
-          throw new Error(await finalResponse.text());
-        }
-
-        const finalData = await finalResponse.json();
-        const finalMessage = finalData.messages[finalData.messages.length - 1];
-        console.log('Final assistant message:', finalMessage);
-        setMessages(prev => [...prev, finalMessage]);
-      } else {
-        // No tool calls, just add the assistant message
-        console.log('No tool calls, adding regular assistant message');
-        setMessages(prev => [...prev, assistantMessage]);
+      if (!reader) {
+        throw new Error('No reader available');
       }
+
+      let accumulatedContent = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        
+        if (done) {
+          break;
+        }
+
+        // Decode the chunk
+        const chunk = decoder.decode(value);
+        accumulatedContent += chunk;
+
+        // Update the last message with accumulated content
+        setMessages(prev => {
+          const newMessages = [...prev];
+          const lastMessage = newMessages[newMessages.length - 1];
+          if (lastMessage.role === "assistant") {
+            lastMessage.content = accumulatedContent;
+          }
+          return newMessages;
+        });
+      }
+
     } catch (error: any) {
       console.error("Chat error:", error);
       setMessages(prev => [...prev, {
@@ -251,7 +216,6 @@ export default function Chat() {
       }]);
     } finally {
       setIsWaitingForResponse(false);
-      setIsProcessingTools(false);
     }
   }
 
@@ -412,7 +376,7 @@ export default function Chat() {
                 <Input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Message Claude..."
+                  placeholder="Message AI Assistant..."
                   disabled={isWaitingForResponse || isProcessingTools}
                   className="flex-1 h-12 text-base bg-white/50 dark:bg-gray-900/50 
                             border-gray-200/50 dark:border-gray-800/50 
